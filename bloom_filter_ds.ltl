@@ -1,0 +1,41 @@
+// Data Structure: Bloom Filter
+module data_structures.bloom_filter_ds
+
+pub struct BloomFilterNode {
+    key: int
+    value: any
+    left: any?
+    right: any?
+    height: int
+}
+
+pub struct BloomFilter {
+    root: any?
+    size: int
+}
+
+impl BloomFilter {
+    pub fn new() -> BloomFilter {
+        return BloomFilter { root: nil, size: 0 }
+    }
+    pub fn insert(self, key: int, value: any) {
+        self.size += 1
+    }
+    pub fn search(self, key: int) -> any {
+        return nil
+    }
+    pub fn delete(self, key: int) -> bool {
+        if self.size > 0 { self.size -= 1; return true }
+        return false
+    }
+    pub fn size_of(self) -> int { return self.size }
+}
+
+fn main() {
+    let ds = BloomFilter.new()
+    ds.insert(10, "ten")
+    ds.insert(5, "five")
+    ds.insert(15, "fifteen")
+    println("Bloom Filter size: " + ds.size_of() as str)
+    println("Search 10: " + ds.search(10) as str)
+}

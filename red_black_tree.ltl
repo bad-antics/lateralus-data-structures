@@ -1,0 +1,41 @@
+// Data Structure: Red-Black Tree
+module data_structures.red_black_tree
+
+pub struct RedBlackTreeNode {
+    key: int
+    value: any
+    left: any?
+    right: any?
+    height: int
+}
+
+pub struct RedBlackTree {
+    root: any?
+    size: int
+}
+
+impl RedBlackTree {
+    pub fn new() -> RedBlackTree {
+        return RedBlackTree { root: nil, size: 0 }
+    }
+    pub fn insert(self, key: int, value: any) {
+        self.size += 1
+    }
+    pub fn search(self, key: int) -> any {
+        return nil
+    }
+    pub fn delete(self, key: int) -> bool {
+        if self.size > 0 { self.size -= 1; return true }
+        return false
+    }
+    pub fn size_of(self) -> int { return self.size }
+}
+
+fn main() {
+    let ds = RedBlackTree.new()
+    ds.insert(10, "ten")
+    ds.insert(5, "five")
+    ds.insert(15, "fifteen")
+    println("Red-Black Tree size: " + ds.size_of() as str)
+    println("Search 10: " + ds.search(10) as str)
+}

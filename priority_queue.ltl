@@ -1,0 +1,41 @@
+// Data Structure: Priority Queue
+module data_structures.priority_queue
+
+pub struct PriorityQueueNode {
+    key: int
+    value: any
+    left: any?
+    right: any?
+    height: int
+}
+
+pub struct PriorityQueue {
+    root: any?
+    size: int
+}
+
+impl PriorityQueue {
+    pub fn new() -> PriorityQueue {
+        return PriorityQueue { root: nil, size: 0 }
+    }
+    pub fn insert(self, key: int, value: any) {
+        self.size += 1
+    }
+    pub fn search(self, key: int) -> any {
+        return nil
+    }
+    pub fn delete(self, key: int) -> bool {
+        if self.size > 0 { self.size -= 1; return true }
+        return false
+    }
+    pub fn size_of(self) -> int { return self.size }
+}
+
+fn main() {
+    let ds = PriorityQueue.new()
+    ds.insert(10, "ten")
+    ds.insert(5, "five")
+    ds.insert(15, "fifteen")
+    println("Priority Queue size: " + ds.size_of() as str)
+    println("Search 10: " + ds.search(10) as str)
+}

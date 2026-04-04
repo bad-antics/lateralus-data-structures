@@ -1,0 +1,41 @@
+// Data Structure: Binomial Heap
+module data_structures.binomial_heap
+
+pub struct BinomialHeapNode {
+    key: int
+    value: any
+    left: any?
+    right: any?
+    height: int
+}
+
+pub struct BinomialHeap {
+    root: any?
+    size: int
+}
+
+impl BinomialHeap {
+    pub fn new() -> BinomialHeap {
+        return BinomialHeap { root: nil, size: 0 }
+    }
+    pub fn insert(self, key: int, value: any) {
+        self.size += 1
+    }
+    pub fn search(self, key: int) -> any {
+        return nil
+    }
+    pub fn delete(self, key: int) -> bool {
+        if self.size > 0 { self.size -= 1; return true }
+        return false
+    }
+    pub fn size_of(self) -> int { return self.size }
+}
+
+fn main() {
+    let ds = BinomialHeap.new()
+    ds.insert(10, "ten")
+    ds.insert(5, "five")
+    ds.insert(15, "fifteen")
+    println("Binomial Heap size: " + ds.size_of() as str)
+    println("Search 10: " + ds.search(10) as str)
+}

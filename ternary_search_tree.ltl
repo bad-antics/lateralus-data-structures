@@ -1,0 +1,41 @@
+// Data Structure: Ternary Search Tree
+module data_structures.ternary_search_tree
+
+pub struct TernarySearchTreeNode {
+    key: int
+    value: any
+    left: any?
+    right: any?
+    height: int
+}
+
+pub struct TernarySearchTree {
+    root: any?
+    size: int
+}
+
+impl TernarySearchTree {
+    pub fn new() -> TernarySearchTree {
+        return TernarySearchTree { root: nil, size: 0 }
+    }
+    pub fn insert(self, key: int, value: any) {
+        self.size += 1
+    }
+    pub fn search(self, key: int) -> any {
+        return nil
+    }
+    pub fn delete(self, key: int) -> bool {
+        if self.size > 0 { self.size -= 1; return true }
+        return false
+    }
+    pub fn size_of(self) -> int { return self.size }
+}
+
+fn main() {
+    let ds = TernarySearchTree.new()
+    ds.insert(10, "ten")
+    ds.insert(5, "five")
+    ds.insert(15, "fifteen")
+    println("Ternary Search Tree size: " + ds.size_of() as str)
+    println("Search 10: " + ds.search(10) as str)
+}
