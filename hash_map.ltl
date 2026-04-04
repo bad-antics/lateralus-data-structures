@@ -1,0 +1,70 @@
+// ────────────────────────────────────────────────────────────────────────
+// hash_map.ltl  —  Hash Map
+// ────────────────────────────────────────────────────────────────────────
+//
+//   Open-addressing hash table
+// ────────────────────────────────────────────────────────────────────────
+
+pub struct HashMap {
+    buckets: list
+    size: int
+    capacity: int
+}
+
+impl HashMap {
+    pub fn new(cap: int) -> HashMap {
+        let mut b = []
+        let mut i = 0
+        while i < cap {
+            b = push(b, nil)
+            i += 1
+        }
+        return HashMap { buckets: b, size: 0, capacity: cap }
+    }
+
+    fn hash(self, key: str) -> int {
+        let mut h = 0
+        for ch in key {
+            h = h * 31 + ord(ch)
+        }
+        return h % self.capacity
+    }
+
+    pub fn put(self, key: str, value: any) {
+        let idx = self.hash(key)
+        let mut i = idx
+        let mut probes = 0
+        while probes < self.capacity {
+            if self.buckets[i] == nil || self.buckets[i][0] == key {
+                self.buckets[i] = [key, value]
+                if probes == 0 { self.size += 1 }
+                return
+            }
+            i = (i + 1) % self.capacity
+            probes += 1
+        }
+        throw RuntimeError("HashMap full")
+    }
+
+    pub fn get(self, key: str) -> any {
+        let idx = self.hash(key)
+        let mut i = idx
+        let mut probes = 0
+        while probes < self.capacity {
+            if self.buckets[i] == nil { return nil }
+            if self.buckets[i][0] == key { return self.buckets[i][1] }
+            i = (i + 1) % self.capacity
+            probes += 1
+        }
+        return nil
+    }
+}
+
+fn main() {
+    let mut m = HashMap.new(16)
+    m.put("name", "Lateralus")
+    m.put("version", "2.5")
+    m.put("type", "language")
+    println("name: " + m.get("name"))
+    println("version: " + m.get("version"))
+}

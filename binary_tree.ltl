@@ -1,0 +1,56 @@
+// ────────────────────────────────────────────────────────────────────────
+// binary_tree.ltl  —  Binary Search Tree
+// ────────────────────────────────────────────────────────────────────────
+//
+//   BST with insert, search, traversal
+// ────────────────────────────────────────────────────────────────────────
+
+pub struct TreeNode {
+    value: int
+    left: TreeNode?
+    right: TreeNode?
+}
+
+pub fn bst_insert(root: TreeNode?, val: int) -> TreeNode {
+    if root == nil {
+        return TreeNode { value: val, left: nil, right: nil }
+    }
+    if val < root.value {
+        root.left = bst_insert(root.left, val)
+    } else if val > root.value {
+        root.right = bst_insert(root.right, val)
+    }
+    return root
+}
+
+pub fn bst_search(root: TreeNode?, val: int) -> bool {
+    if root == nil { return false }
+    if val == root.value { return true }
+    if val < root.value { return bst_search(root.left, val) }
+    return bst_search(root.right, val)
+}
+
+pub fn inorder(root: TreeNode?) -> list {
+    if root == nil { return [] }
+    let left = inorder(root.left)
+    let right = inorder(root.right)
+    return left + [root.value] + right
+}
+
+pub fn tree_height(root: TreeNode?) -> int {
+    if root == nil { return 0 }
+    let lh = tree_height(root.left)
+    let rh = tree_height(root.right)
+    return 1 + (if lh > rh { lh } else { rh })
+}
+
+fn main() {
+    let mut root = nil
+    let values = [50, 30, 70, 20, 40, 60, 80]
+    for v in values {
+        root = bst_insert(root, v)
+    }
+    println("Inorder: " + inorder(root) as str)
+    println("Search 40: " + bst_search(root, 40) as str)
+    println("Height: " + tree_height(root) as str)
+}

@@ -1,0 +1,46 @@
+// ────────────────────────────────────────────────────────────────────────
+// stack.ltl  —  Stack
+// ────────────────────────────────────────────────────────────────────────
+//
+//   LIFO data structure
+// ────────────────────────────────────────────────────────────────────────
+
+pub struct Stack {
+    items: list
+}
+
+impl Stack {
+    pub fn new() -> Stack {
+        return Stack { items: [] }
+    }
+
+    pub fn push(self, val: any) -> Stack {
+        return Stack { items: push(self.items, val) }
+    }
+
+    pub fn pop(self) -> list {
+        if len(self.items) == 0 { throw RuntimeError("Stack underflow") }
+        let val = self.items[len(self.items) - 1]
+        let rest = slice(self.items, 0, len(self.items) - 1)
+        return [val, Stack { items: rest }]
+    }
+
+    pub fn peek(self) -> any {
+        if len(self.items) == 0 { throw RuntimeError("Stack empty") }
+        return self.items[len(self.items) - 1]
+    }
+
+    pub fn is_empty(self) -> bool { return len(self.items) == 0 }
+    pub fn size(self) -> int { return len(self.items) }
+}
+
+fn main() {
+    let mut s = Stack.new()
+    s = s.push(10)
+    s = s.push(20)
+    s = s.push(30)
+    println("Top: " + s.peek() as str)
+    println("Size: " + s.size() as str)
+    let result = s.pop()
+    println("Popped: " + result[0] as str)
+}

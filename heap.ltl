@@ -1,0 +1,70 @@
+// ────────────────────────────────────────────────────────────────────────
+// heap.ltl  —  Min Heap
+// ────────────────────────────────────────────────────────────────────────
+//
+//   Priority queue using binary heap
+// ────────────────────────────────────────────────────────────────────────
+
+pub struct MinHeap {
+    data: list
+}
+
+impl MinHeap {
+    pub fn new() -> MinHeap {
+        return MinHeap { data: [] }
+    }
+
+    fn parent(i: int) -> int { return (i - 1) / 2 }
+    fn left(i: int) -> int { return 2 * i + 1 }
+    fn right(i: int) -> int { return 2 * i + 2 }
+
+    pub fn insert(self, val: int) {
+        self.data = push(self.data, val)
+        let mut i = len(self.data) - 1
+        while i > 0 && self.data[MinHeap.parent(i)] > self.data[i] {
+            let p = MinHeap.parent(i)
+            let tmp = self.data[i]
+            self.data[i] = self.data[p]
+            self.data[p] = tmp
+            i = p
+        }
+    }
+
+    pub fn extract_min(self) -> int {
+        if len(self.data) == 0 { throw RuntimeError("Heap empty") }
+        let min_val = self.data[0]
+        let last = len(self.data) - 1
+        self.data[0] = self.data[last]
+        self.data = slice(self.data, 0, last)
+        self.heapify_down(0)
+        return min_val
+    }
+
+    fn heapify_down(self, i: int) {
+        let n = len(self.data)
+        let mut smallest = i
+        let l = MinHeap.left(i)
+        let r = MinHeap.right(i)
+        if l < n && self.data[l] < self.data[smallest] { smallest = l }
+        if r < n && self.data[r] < self.data[smallest] { smallest = r }
+        if smallest != i {
+            let tmp = self.data[i]
+            self.data[i] = self.data[smallest]
+            self.data[smallest] = tmp
+            self.heapify_down(smallest)
+        }
+    }
+
+    pub fn peek(self) -> int { return self.data[0] }
+    pub fn size(self) -> int { return len(self.data) }
+}
+
+fn main() {
+    let mut h = MinHeap.new()
+    for v in [5, 3, 17, 10, 84, 19, 6, 22, 9] {
+        h.insert(v)
+    }
+    println("Min: " + h.peek() as str)
+    println("Extract: " + h.extract_min() as str)
+    println("New min: " + h.peek() as str)
+}

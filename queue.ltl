@@ -1,0 +1,45 @@
+// ────────────────────────────────────────────────────────────────────────
+// queue.ltl  —  Queue
+// ────────────────────────────────────────────────────────────────────────
+//
+//   FIFO data structure
+// ────────────────────────────────────────────────────────────────────────
+
+pub struct Queue {
+    items: list
+}
+
+impl Queue {
+    pub fn new() -> Queue {
+        return Queue { items: [] }
+    }
+
+    pub fn enqueue(self, val: any) -> Queue {
+        return Queue { items: push(self.items, val) }
+    }
+
+    pub fn dequeue(self) -> list {
+        if len(self.items) == 0 { throw RuntimeError("Queue empty") }
+        let val = self.items[0]
+        let rest = slice(self.items, 1, len(self.items))
+        return [val, Queue { items: rest }]
+    }
+
+    pub fn front(self) -> any {
+        if len(self.items) == 0 { throw RuntimeError("Queue empty") }
+        return self.items[0]
+    }
+
+    pub fn is_empty(self) -> bool { return len(self.items) == 0 }
+    pub fn size(self) -> int { return len(self.items) }
+}
+
+fn main() {
+    let mut q = Queue.new()
+    q = q.enqueue("first")
+    q = q.enqueue("second")
+    q = q.enqueue("third")
+    println("Front: " + q.front())
+    let result = q.dequeue()
+    println("Dequeued: " + result[0])
+}

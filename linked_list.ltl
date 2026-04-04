@@ -1,0 +1,76 @@
+// ────────────────────────────────────────────────────────────────────────
+// linked_list.ltl  —  Linked List
+// ────────────────────────────────────────────────────────────────────────
+//
+//   Singly linked list implementation
+// ────────────────────────────────────────────────────────────────────────
+
+pub struct Node {
+    value: any
+    next: Node?
+}
+
+pub struct LinkedList {
+    head: Node?
+    size: int
+}
+
+impl LinkedList {
+    pub fn new() -> LinkedList {
+        return LinkedList { head: nil, size: 0 }
+    }
+
+    pub fn push_front(self, val: any) -> LinkedList {
+        let node = Node { value: val, next: self.head }
+        return LinkedList { head: node, size: self.size + 1 }
+    }
+
+    pub fn pop_front(self) -> list {
+        if self.head == nil { throw RuntimeError("Empty list") }
+        let val = self.head.value
+        let rest = LinkedList { head: self.head.next, size: self.size - 1 }
+        return [val, rest]
+    }
+
+    pub fn to_list(self) -> list {
+        let mut result = []
+        let mut current = self.head
+        while current != nil {
+            result = push(result, current.value)
+            current = current.next
+        }
+        return result
+    }
+
+    pub fn contains(self, val: any) -> bool {
+        let mut current = self.head
+        while current != nil {
+            if current.value == val { return true }
+            current = current.next
+        }
+        return false
+    }
+
+    pub fn reverse(self) -> LinkedList {
+        let mut prev = nil
+        let mut current = self.head
+        while current != nil {
+            let next = current.next
+            current.next = prev
+            prev = current
+            current = next
+        }
+        return LinkedList { head: prev, size: self.size }
+    }
+}
+
+fn main() {
+    let mut ll = LinkedList.new()
+    ll = ll.push_front(3)
+    ll = ll.push_front(2)
+    ll = ll.push_front(1)
+    println("List: " + ll.to_list() as str)
+    println("Contains 2: " + ll.contains(2) as str)
+    let rev = ll.reverse()
+    println("Reversed: " + rev.to_list() as str)
+}

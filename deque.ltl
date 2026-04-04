@@ -1,0 +1,48 @@
+// ────────────────────────────────────────────────────────────────────────
+// deque.ltl  —  Double-ended Queue
+// ────────────────────────────────────────────────────────────────────────
+//
+//   Deque with front/back operations
+// ────────────────────────────────────────────────────────────────────────
+
+pub struct Deque {
+    items: list
+}
+
+impl Deque {
+    pub fn new() -> Deque { return Deque { items: [] } }
+
+    pub fn push_front(self, val: any) -> Deque {
+        return Deque { items: [val] + self.items }
+    }
+
+    pub fn push_back(self, val: any) -> Deque {
+        return Deque { items: push(self.items, val) }
+    }
+
+    pub fn pop_front(self) -> list {
+        if len(self.items) == 0 { throw RuntimeError("Deque empty") }
+        return [self.items[0], Deque { items: slice(self.items, 1, len(self.items)) }]
+    }
+
+    pub fn pop_back(self) -> list {
+        let n = len(self.items)
+        if n == 0 { throw RuntimeError("Deque empty") }
+        return [self.items[n - 1], Deque { items: slice(self.items, 0, n - 1) }]
+    }
+
+    pub fn front(self) -> any { return self.items[0] }
+    pub fn back(self) -> any { return self.items[len(self.items) - 1] }
+    pub fn size(self) -> int { return len(self.items) }
+    pub fn is_empty(self) -> bool { return len(self.items) == 0 }
+}
+
+fn main() {
+    let mut d = Deque.new()
+    d = d.push_back(1)
+    d = d.push_back(2)
+    d = d.push_front(0)
+    println("Front: " + d.front() as str)
+    println("Back: " + d.back() as str)
+    println("Size: " + d.size() as str)
+}
