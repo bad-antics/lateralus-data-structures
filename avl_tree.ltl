@@ -1,41 +1,139 @@
-// Data Structure: AVL Tree
+// AVL Tree (Adelson-Velsky & Landis, 1962) — the first self-balancing BST.
+//
+// Each node stores its height. The balance factor bf = h(left) - h(right)
+// is kept in {-1, 0, +1}. After every insert/delete, unbalanced nodes are
+// restored via single or double rotations (4 cases: LL, RR, LR, RL).
+//
+// Guarantees: O(log n) lookup/insert/delete, height ≤ 1.44 · log₂(n+2).
+// Vs Red-Black: AVL is MORE strictly balanced → faster lookups, slower
+// inserts (more rotations). Used by FreeBSD VFS, Apple's HFS+ extents,
+// and as the default sorted container in many C++ std::map libstdc++ test
+// rigs.
+
 module data_structures.avl_tree
 
-pub struct AVLTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub key: int, pub value: any,
+    pub left: Node?, pub right: Node?, pub height: int,
 }
 
-pub struct AVLTree {
-    root: any?
-    size: int
-}
+pub struct AVLTree { pub root: Node?, pub size: int }
 
 impl AVLTree {
-    pub fn new() -> AVLTree {
-        return AVLTree { root: nil, size: 0 }
-    }
+    pub fn new() -> AVLTree { return AVLTree { root: nil, size: 0 } }
+
     pub fn insert(self, key: int, value: any) {
-        self.size += 1
+        self.root = insert_node(self.root, key, value)
+        self.size = count(self.root)
     }
+
     pub fn search(self, key: int) -> any {
+        let mut n = self.root
+        while n != nil {
+            if key == n.key      { return n.value }
+            else if key < n.key  { n = n.left }
+            else                 { n = n.right }
+        }
         return nil
     }
+
     pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+        let (new_root, found) = delete_node(self.root, key)
+        self.root = new_root
+        if found { self.size -= 1 }
+        return found
     }
+
     pub fn size_of(self) -> int { return self.size }
+    pub fn height(self) -> int  { return h(self.root) }
+}
+
+fn h(n: Node?) -> int { return if n == nil { 0 } else { n.height } }
+fn bf(n: Node?) -> int { return if n == nil { 0 } else { h(n.left) - h(n.right) } }
+
+fn update_height(n: Node) {
+    let lh = h(n.left); let rh = h(n.right)
+    n.height = 1 + (if lh > rh { lh } else { rh })
+}
+
+fn rotate_right(y: Node) -> Node {
+    let x = y.left; let t2 = x.right
+    x.right = y; y.left = t2
+    update_height(y); update_height(x)
+    return x
+}
+
+fn rotate_left(x: Node) -> Node {
+    let y = x.right; let t2 = y.left
+    y.left = x; x.right = t2
+    update_height(x); update_height(y)
+    return y
+}
+
+fn insert_node(n: Node?, key: int, value: any) -> Node {
+    if n == nil { return Node { key: key, value: value, left: nil, right: nil, height: 1 } }
+    if key < n.key       { n.left = insert_node(n.left, key, value) }
+    else if key > n.key  { n.right = insert_node(n.right, key, value) }
+    else                 { n.value = value; return n }
+    update_height(n)
+    let balance = bf(n)
+    // LL
+    if balance > 1 && key < n.left.key { return rotate_right(n) }
+    // RR
+    if balance < -1 && key > n.right.key { return rotate_left(n) }
+    // LR
+    if balance > 1 && key > n.left.key {
+        n.left = rotate_left(n.left); return rotate_right(n)
+    }
+    // RL
+    if balance < -1 && key < n.right.key {
+        n.right = rotate_right(n.right); return rotate_left(n)
+    }
+    return n
+}
+
+fn delete_node(n: Node?, key: int) -> (Node?, bool) {
+    if n == nil { return (nil, false) }
+    let mut found = false
+    if key < n.key {
+        let (nl, f) = delete_node(n.left, key); n.left = nl; found = f
+    } else if key > n.key {
+        let (nr, f) = delete_node(n.right, key); n.right = nr; found = f
+    } else {
+        found = true
+        if n.left == nil || n.right == nil {
+            return (if n.left != nil { n.left } else { n.right }, true)
+        }
+        // Two children: replace with in-order successor.
+        let succ = min_node(n.right)
+        n.key = succ.key; n.value = succ.value
+        let (nr, _) = delete_node(n.right, succ.key); n.right = nr
+    }
+    update_height(n)
+    let balance = bf(n)
+    if balance > 1 && bf(n.left) >= 0  { return (rotate_right(n), found) }
+    if balance > 1 && bf(n.left) < 0   { n.left = rotate_left(n.left); return (rotate_right(n), found) }
+    if balance < -1 && bf(n.right) <= 0 { return (rotate_left(n), found) }
+    if balance < -1 && bf(n.right) > 0 { n.right = rotate_right(n.right); return (rotate_left(n), found) }
+    return (n, found)
+}
+
+fn min_node(n: Node) -> Node {
+    let mut cur = n
+    while cur.left != nil { cur = cur.left }
+    return cur
+}
+
+fn count(n: Node?) -> int {
+    if n == nil { return 0 }
+    return 1 + count(n.left) + count(n.right)
 }
 
 fn main() {
-    let ds = AVLTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("AVL Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let t = AVLTree.new()
+    for k in [10, 20, 30, 40, 50, 25] { t.insert(k, k * 2) }
+    println("size=" + t.size_of() as str + " height=" + t.height() as str)
+    println("search 25 -> " + t.search(25) as str)   // 50
+    t.delete(20)
+    println("after delete size=" + t.size_of() as str)
 }
