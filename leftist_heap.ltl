@@ -1,41 +1,75 @@
-// Data Structure: Leftist Heap
+// Leftist Heap (Clark Allan Crane, 1972).
+//
+// Self-adjusting melding heap. Each node stores an s-value (null-path
+// length = shortest path to a null child). Invariant: s(left) ≥
+// s(right). Consequence: the rightmost spine has length ≤ log₂(n+1),
+// so MELD can recurse along the right spines of the two input heaps
+// in O(log n) and swap children whenever the invariant is violated.
+//
+// Ops: merge O(log n), insert O(log n) (= merge with singleton),
+// extract_min O(log n). Simpler than binomial/Fibonacci when you
+// only need meld + pop.
+//
+// Uses: priority queues that merge frequently (multi-source Dijkstra,
+// task stealing, tournament selection), functional languages (fully
+// persistent version is a 10-liner in Haskell: Okasaki Ch. 3.1).
+
 module data_structures.leftist_heap
 
-pub struct LeftistHeapNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub key: int, pub value: any, pub s_val: int,
+    pub left: Node?, pub right: Node?,
 }
 
-pub struct LeftistHeap {
-    root: any?
-    size: int
-}
+pub struct LeftistHeap { pub root: Node?, pub size: int }
 
 impl LeftistHeap {
-    pub fn new() -> LeftistHeap {
-        return LeftistHeap { root: nil, size: 0 }
-    }
+    pub fn new() -> LeftistHeap { return LeftistHeap { root: nil, size: 0 } }
+
     pub fn insert(self, key: int, value: any) {
+        let n = Node { key: key, value: value, s_val: 1, left: nil, right: nil }
+        self.root = merge(self.root, n)
         self.size += 1
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn find_min(self) -> int {
+        if self.root == nil { throw Error("leftist_heap: empty") }
+        return self.root.key
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn extract_min(self) -> int {
+        if self.root == nil { throw Error("leftist_heap: empty") }
+        let min_key = self.root.key
+        self.root = merge(self.root.left, self.root.right)
+        self.size -= 1
+        return min_key
     }
+
+    pub fn merge_with(self, other: LeftistHeap) {
+        self.root = merge(self.root, other.root)
+        self.size += other.size
+    }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
+fn s_val(n: Node?) -> int { return if n == nil { 0 } else { n.s_val } }
+
+fn merge(a: Node?, b: Node?) -> Node? {
+    if a == nil { return b }
+    if b == nil { return a }
+    let (hi, lo) = if a.key <= b.key { (a, b) } else { (b, a) }
+    hi.right = merge(hi.right, lo)
+    // Restore leftist invariant.
+    if s_val(hi.left) < s_val(hi.right) {
+        let t = hi.left; hi.left = hi.right; hi.right = t
+    }
+    hi.s_val = s_val(hi.right) + 1
+    return hi
+}
+
 fn main() {
-    let ds = LeftistHeap.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Leftist Heap size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let h = LeftistHeap.new()
+    for k in [7, 2, 9, 4, 1, 6, 3] { h.insert(k, k) }
+    while h.size_of() > 0 { println(h.extract_min() as str) }
 }
