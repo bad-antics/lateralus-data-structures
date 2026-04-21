@@ -1,41 +1,139 @@
-// Data Structure: Finger Tree
+// Finger Tree (Hinze & Paterson, 2006).
+//
+// A functional, persistent general-purpose sequence structure.
+// Amortized O(1) cons, snoc, head, tail, init, last — and O(log n)
+// concatenation, split, index. The secret: a 2-3 tree with "fingers"
+// (explicit pointers) at both ends, combined with cached "measurements"
+// in internal nodes. By choosing the monoidal measure you get:
+//   • Size-measure → deque with index / split by position.
+//   • Max-priority → priority queue (ord-monoid).
+//   • Interval-measure → interval map.
+//   • Trie-profile → ordered sequences with fast min.
+//
+// Underpins Haskell's Data.Sequence, Clojure's rrb-vector (distant
+// cousin), and Scala immutable.Vector's peers.
+//
+// This implementation shows the structural core; full variadic-measure
+// support would layer a Monoid trait on top.
+
 module data_structures.finger_tree
 
-pub struct FingerTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+// 2-3 trees inside the spine; the measure is sequence length.
+pub struct Node {
+    pub size: int,
+    pub items: list,         // 2 or 3 children; leaves hold values
+    pub is_leaf: bool,
 }
 
+pub struct Digit { pub items: list }        // 1..4 children
+
 pub struct FingerTree {
-    root: any?
-    size: int
+    pub tag: str,            // "empty" | "single" | "deep"
+    pub single: any,
+    pub left: Digit, pub right: Digit,
+    pub spine: FingerTree?,  // of Node
+    pub size: int,
 }
 
 impl FingerTree {
-    pub fn new() -> FingerTree {
-        return FingerTree { root: nil, size: 0 }
+    pub fn empty() -> FingerTree {
+        return FingerTree { tag: "empty", single: nil,
+                            left: Digit { items: [] }, right: Digit { items: [] },
+                            spine: nil, size: 0 }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn push_front(self, v: any) -> FingerTree {
+        if self.tag == "empty" {
+            return FingerTree { tag: "single", single: v,
+                                left: Digit { items: [] }, right: Digit { items: [] },
+                                spine: nil, size: 1 }
+        }
+        if self.tag == "single" {
+            return FingerTree {
+                tag: "deep", single: nil,
+                left:  Digit { items: [v] },
+                right: Digit { items: [self.single] },
+                spine: nil, size: 2,
+            }
+        }
+        if len(self.left.items) < 4 {
+            let mut l = [v]
+            for x in self.left.items { l = push(l, x) }
+            return FingerTree {
+                tag: "deep", single: nil,
+                left:  Digit { items: l },
+                right: self.right,
+                spine: self.spine, size: self.size + 1,
+            }
+        }
+        // Overflow: push rightmost three elements of left as a Node into spine.
+        let overflow = Node {
+            size: 3, is_leaf: true,
+            items: slice(self.left.items, 1, 4),
+        }
+        let new_spine = if self.spine == nil { FingerTree.empty() } else { self.spine }
+        let new_left = Digit { items: [v, self.left.items[0]] }
+        return FingerTree {
+            tag: "deep", single: nil,
+            left: new_left, right: self.right,
+            spine: new_spine.push_front(overflow), size: self.size + 1,
+        }
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn push_back(self, v: any) -> FingerTree {
+        // Symmetric; elided for brevity but follows the same pattern
+        // flipped over left↔right.
+        return push_back_impl(self, v)
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn head(self) -> any {
+        if self.tag == "empty"  { throw Error("finger_tree: empty") }
+        if self.tag == "single" { return self.single }
+        return self.left.items[0]
     }
+
+    pub fn last(self) -> any {
+        if self.tag == "empty"  { throw Error("finger_tree: empty") }
+        if self.tag == "single" { return self.single }
+        return self.right.items[len(self.right.items) - 1]
+    }
+
     pub fn size_of(self) -> int { return self.size }
+    pub fn is_empty(self) -> bool { return self.tag == "empty" }
 }
 
-fn main() {
-    let ds = FingerTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Finger Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+fn push_back_impl(t: FingerTree, v: any) -> FingerTree {
+    if t.tag == "empty" {
+        return FingerTree { tag: "single", single: v,
+                            left: Digit { items: [] }, right: Digit { items: [] },
+                            spine: nil, size: 1 }
+    }
+    if t.tag == "single" {
+        return FingerTree {
+            tag: "deep", single: nil,
+            left:  Digit { items: [t.single] },
+            right: Digit { items: [v] },
+            spine: nil, size: 2,
+        }
+    }
+    if len(t.right.items) < 4 {
+        let mut r = t.right.items
+        r = push(r, v)
+        return FingerTree {
+            tag: "deep", single: nil,
+            left: t.left, right: Digit { items: r },
+            spine: t.spine, size: t.size + 1,
+        }
+    }
+    let overflow = Node {
+        size: 3, is_leaf: true,
+        items: slice(t.right.items, 0, 3),
+    }
+    let new_spine = if t.spine == nil { FingerTree.empty() } else { t.spine }
+    let new_right = Digit { items: [t.right.items[3], v] }
+    return FingerTree {
+        tag: "deep", single: nil,
+        left: t.left, right: new_right,
+        spine: push_back_impl(new_spine, overflow), size: t.size + 1,
+    }
 }
