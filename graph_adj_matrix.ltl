@@ -1,41 +1,99 @@
-// Data Structure: Graph (Adjacency Matrix)
+// Graph with adjacency-matrix representation — dense graphs.
+//
+// Stores an n×n matrix where cell[i][j] is the edge weight (or a
+// sentinel for "no edge"). Space O(V²), edge-exists O(1), but
+// iterating the neighbours of u takes O(V) regardless of degree.
+//
+// Best for:
+//   • Dense graphs where E = Θ(V²) (complete, near-complete).
+//   • Small V (< ~1000): matrix is tiny and cache-friendly.
+//   • Algorithms that benefit from O(1) edge checks: Floyd-Warshall
+//     all-pairs shortest paths, matrix-based graph products,
+//     transitive closure, bitset-accelerated BFS.
+//   • Graph coloring, max-clique, Ford-Fulkerson on dense graphs.
+
 module data_structures.graph_adj_matrix
 
-pub struct GraphAdjacencyMatrixNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
-}
+pub const INF: int = 1073741823       // "no edge" sentinel (~2^30)
 
-pub struct GraphAdjacencyMatrix {
-    root: any?
-    size: int
-}
+pub struct GraphM { pub mat: list, pub n: int, pub directed: bool }
 
-impl GraphAdjacencyMatrix {
-    pub fn new() -> GraphAdjacencyMatrix {
-        return GraphAdjacencyMatrix { root: nil, size: 0 }
+impl GraphM {
+    pub fn new(n: int, directed: bool) -> GraphM {
+        let mut m = []; let mut i = 0
+        while i < n {
+            let mut row = []; let mut j = 0
+            while j < n { row = push(row, INF); j += 1 }
+            m = push(m, row); i += 1
+        }
+        let mut k = 0
+        while k < n { m[k][k] = 0; k += 1 }   // self-distance = 0
+        return GraphM { mat: m, n: n, directed: directed }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
-    }
-    pub fn search(self, key: int) -> any {
-        return nil
-    }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
-    }
-    pub fn size_of(self) -> int { return self.size }
-}
 
-fn main() {
-    let ds = GraphAdjacencyMatrix.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Graph (Adjacency Matrix) size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    pub fn add_edge(self, u: int, v: int, w: int) {
+        self.mat[u][v] = w
+        if !self.directed { self.mat[v][u] = w }
+    }
+
+    pub fn has_edge(self, u: int, v: int) -> bool {
+        return self.mat[u][v] != INF && u != v
+    }
+
+    pub fn weight(self, u: int, v: int) -> int { return self.mat[u][v] }
+
+    /// Floyd-Warshall all-pairs shortest paths. O(V³).
+    /// Returns new distance matrix without mutating self.
+    pub fn floyd_warshall(self) -> list {
+        let mut d = []; let mut i = 0
+        while i < self.n {
+            let mut row = []; let mut j = 0
+            while j < self.n { row = push(row, self.mat[i][j]); j += 1 }
+            d = push(d, row); i += 1
+        }
+        let mut k = 0
+        while k < self.n {
+            let mut a = 0
+            while a < self.n {
+                if d[a][k] != INF {
+                    let mut b = 0
+                    while b < self.n {
+                        if d[k][b] != INF && d[a][k] + d[k][b] < d[a][b] {
+                            d[a][b] = d[a][k] + d[k][b]
+                        }
+                        b += 1
+                    }
+                }
+                a += 1
+            }
+            k += 1
+        }
+        return d
+    }
+
+    /// Transitive closure via boolean-matrix Warshall variant.
+    pub fn transitive_closure(self) -> list {
+        let mut r = []; let mut i = 0
+        while i < self.n {
+            let mut row = []; let mut j = 0
+            while j < self.n { row = push(row, self.mat[i][j] != INF); j += 1 }
+            r = push(r, row); i += 1
+        }
+        let mut k = 0
+        while k < self.n {
+            let mut a = 0
+            while a < self.n {
+                if r[a][k] {
+                    let mut b = 0
+                    while b < self.n {
+                        if r[k][b] { r[a][b] = true }
+                        b += 1
+                    }
+                }
+                a += 1
+            }
+            k += 1
+        }
+        return r
+    }
 }
