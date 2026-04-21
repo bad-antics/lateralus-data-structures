@@ -1,41 +1,113 @@
-// Data Structure: Treap
+// Treap — tree + heap (Seidel & Aragon, 1989).
+//
+// Each node has two keys: a BST key (comparison-ordered) and a random
+// priority (heap-ordered). Because priorities are independent of
+// insertion order, the expected tree shape is that of a random BST —
+// i.e. expected height O(log n) without any explicit balancing logic.
+//
+// Operations are built from two primitives:
+//   split(T, k) → (L, R) where L has keys ≤ k, R has keys > k.
+//   merge(L, R)        — L.keys < R.keys, chooses by priority.
+//
+// "Implicit treap" (keyed by subtree-size) is a common technique in
+// competitive programming: O(log n) array insert/delete/reverse,
+// sequence reverse, persistent structures.
+//
+// Real-world: Prolog / logic-programming term indexing, some
+// in-memory databases, many competitive-programming libraries.
+
 module data_structures.treap
 
-pub struct TreapNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub key: int, pub value: any, pub priority: int,
+    pub left: Node?, pub right: Node?,
 }
 
-pub struct Treap {
-    root: any?
-    size: int
-}
+pub struct Treap { pub root: Node?, pub size: int, pub rng_state: int }
 
 impl Treap {
-    pub fn new() -> Treap {
-        return Treap { root: nil, size: 0 }
+    pub fn new(seed: int) -> Treap {
+        return Treap { root: nil, size: 0, rng_state: if seed == 0 { 1 } else { seed } }
     }
+
     pub fn insert(self, key: int, value: any) {
+        let pr = self.next_priority()
+        let (l, r) = split(self.root, key)
+        let exists_in_r = (r != nil && min_key(r) == key)
+        if exists_in_r {
+            set_value(r, key, value)
+            self.root = merge(l, r); return
+        }
+        let n = Node { key: key, value: value, priority: pr, left: nil, right: nil }
+        self.root = merge(merge(l, n), r)
         self.size += 1
     }
+
     pub fn search(self, key: int) -> any {
+        let mut n = self.root
+        while n != nil {
+            if key == n.key { return n.value }
+            n = if key < n.key { n.left } else { n.right }
+        }
         return nil
     }
+
     pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+        let (l, r) = split(self.root, key - 1)
+        let (m, r2) = split(r, key)
+        if m == nil { self.root = merge(l, r); return false }
+        self.root = merge(l, r2)
+        self.size -= 1
+        return true
     }
+
     pub fn size_of(self) -> int { return self.size }
+
+    // Xorshift RNG — good enough for randomizing priorities.
+    fn next_priority(self) -> int {
+        let mut x = self.rng_state
+        x = x ^ (x << 13); x = x ^ (x >> 17); x = x ^ (x << 5)
+        x = x & 0x7FFFFFFF
+        self.rng_state = x
+        return x
+    }
 }
 
-fn main() {
-    let ds = Treap.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Treap size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+// split(T, k): keys ≤ k go left, keys > k go right.
+fn split(n: Node?, k: int) -> (Node?, Node?) {
+    if n == nil { return (nil, nil) }
+    if n.key <= k {
+        let (l, r) = split(n.right, k)
+        n.right = l
+        return (n, r)
+    } else {
+        let (l, r) = split(n.left, k)
+        n.left = r
+        return (l, n)
+    }
+}
+
+// merge(L, R): all L.keys < all R.keys.
+fn merge(a: Node?, b: Node?) -> Node? {
+    if a == nil { return b }
+    if b == nil { return a }
+    if a.priority > b.priority {
+        a.right = merge(a.right, b); return a
+    } else {
+        b.left  = merge(a, b.left);  return b
+    }
+}
+
+fn min_key(n: Node) -> int {
+    let mut cur = n
+    while cur.left != nil { cur = cur.left }
+    return cur.key
+}
+
+fn set_value(n: Node, key: int, v: any) {
+    let mut cur = n
+    while cur != nil {
+        if cur.key == key { cur.value = v; return }
+        cur = if key < cur.key { cur.left } else { cur.right }
+    }
 }
