@@ -1,41 +1,137 @@
-// Data Structure: Splay Tree
+// Splay Tree (Sleator & Tarjan, 1985) — self-adjusting BST.
+//
+// After every access (search, insert, delete), the touched node is
+// rotated up to the root via a sequence of zig / zig-zig / zig-zag
+// rotations. No balance metadata stored — the tree "learns" access
+// patterns. Worst-case single operation is O(n), but amortized
+// O(log n) per operation. Recently-used elements stay near the root
+// (working-set property), making splay trees excellent for caches
+// and lexer/parser symbol tables with strong temporal locality.
+//
+// Sleator & Tarjan's Dynamic Optimality Conjecture remains one of
+// the most famous open problems in data structures.
+
 module data_structures.splay_tree
 
-pub struct SplayTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub key: int, pub value: any,
+    pub left: Node?, pub right: Node?, pub parent: Node?,
 }
 
-pub struct SplayTree {
-    root: any?
-    size: int
-}
+pub struct SplayTree { pub root: Node?, pub size: int }
 
 impl SplayTree {
-    pub fn new() -> SplayTree {
-        return SplayTree { root: nil, size: 0 }
-    }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
-    }
+    pub fn new() -> SplayTree { return SplayTree { root: nil, size: 0 } }
+
     pub fn search(self, key: int) -> any {
+        let n = self.find_node(key)
+        if n == nil { return nil }
+        self.splay(n)
+        return n.value
+    }
+
+    pub fn insert(self, key: int, value: any) {
+        if self.root == nil {
+            self.root = Node { key: key, value: value, left: nil, right: nil, parent: nil }
+            self.size = 1
+            return
+        }
+        let mut cur = self.root; let mut parent: Node? = nil
+        while cur != nil {
+            parent = cur
+            if key == cur.key { cur.value = value; self.splay(cur); return }
+            cur = if key < cur.key { cur.left } else { cur.right }
+        }
+        let n = Node { key: key, value: value, left: nil, right: nil, parent: parent }
+        if key < parent.key { parent.left = n } else { parent.right = n }
+        self.size += 1
+        self.splay(n)
+    }
+
+    pub fn delete(self, key: int) -> bool {
+        let n = self.find_node(key)
+        if n == nil { return false }
+        self.splay(n)
+        // n is now root. Replace with merge of its subtrees.
+        let left = self.root.left
+        let right = self.root.right
+        if left  != nil { left.parent = nil }
+        if right != nil { right.parent = nil }
+        if left == nil      { self.root = right }
+        else if right == nil { self.root = left }
+        else {
+            // New root = max of left subtree, then attach right.
+            let mut m = left
+            while m.right != nil { m = m.right }
+            self.root = left
+            self.splay_in(left, m)
+            self.root.right = right; right.parent = self.root
+        }
+        self.size -= 1
+        return true
+    }
+
+    fn find_node(self, key: int) -> Node? {
+        let mut n = self.root
+        while n != nil {
+            if key == n.key { return n }
+            n = if key < n.key { n.left } else { n.right }
+        }
         return nil
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    fn splay(self, n: Node) {
+        while n.parent != nil {
+            let p = n.parent; let g = p.parent
+            if g == nil {
+                if n == p.left { self.rotate_right(p) } else { self.rotate_left(p) }
+            } else if n == p.left && p == g.left {
+                self.rotate_right(g); self.rotate_right(p)          // zig-zig
+            } else if n == p.right && p == g.right {
+                self.rotate_left(g); self.rotate_left(p)
+            } else if n == p.right && p == g.left {
+                self.rotate_left(p); self.rotate_right(g)           // zig-zag
+            } else {
+                self.rotate_right(p); self.rotate_left(g)
+            }
+        }
+        self.root = n
     }
+
+    fn splay_in(self, root: Node, n: Node) {
+        // Same as splay, but stop when n reaches `root`.
+        // Simplified: rotate while n has parent and parent != root's parent.
+        self.splay(n)
+    }
+
+    fn rotate_left(self, x: Node) {
+        let y = x.right
+        x.right = y.left
+        if y.left != nil { y.left.parent = x }
+        y.parent = x.parent
+        if x.parent != nil {
+            if x == x.parent.left { x.parent.left = y } else { x.parent.right = y }
+        } else { self.root = y }
+        y.left = x; x.parent = y
+    }
+
+    fn rotate_right(self, x: Node) {
+        let y = x.left
+        x.left = y.right
+        if y.right != nil { y.right.parent = x }
+        y.parent = x.parent
+        if x.parent != nil {
+            if x == x.parent.right { x.parent.right = y } else { x.parent.left = y }
+        } else { self.root = y }
+        y.right = x; x.parent = y
+    }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
 fn main() {
-    let ds = SplayTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Splay Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let t = SplayTree.new()
+    for k in [50, 30, 70, 20, 40, 60, 80] { t.insert(k, k) }
+    t.search(40)   // 40 becomes root
+    println("root after splay: " + t.root.key as str)
 }
