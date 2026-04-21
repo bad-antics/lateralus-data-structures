@@ -1,41 +1,139 @@
-// Data Structure: Red-Black Tree
+// Red-Black Tree (Bayer 1972 as "symmetric binary B-tree"; Guibas & Sedgewick 1978).
+//
+// Self-balancing BST with node colors RED/BLACK. Invariants:
+//   1. Every node is RED or BLACK.
+//   2. The root is BLACK; every NIL leaf is BLACK.
+//   3. No RED node has a RED child (no consecutive reds on any path).
+//   4. Every path from root to a NIL leaf traverses the same number of BLACK nodes.
+//
+// Consequences: longest path ≤ 2× shortest → height ≤ 2·log₂(n+1),
+// O(log n) lookup/insert/delete with O(1) amortized rotations.
+//
+// Used by: Linux kernel (struct rb_node — schedulers, epoll, cgroups,
+// VMA trees), Java TreeMap/TreeSet, C++ std::map, ext3/4 directory
+// indexing, FreeBSD vm_map. Weaker balance than AVL but fewer rotations,
+// preferred for write-heavy workloads.
+
 module data_structures.red_black_tree
 
-pub struct RedBlackTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub enum Color { Red, Black }
+
+pub struct Node {
+    pub key: int, pub value: any,
+    pub color: Color, pub parent: Node?, pub left: Node?, pub right: Node?,
 }
 
-pub struct RedBlackTree {
-    root: any?
-    size: int
-}
+pub struct RBTree { pub root: Node?, pub size: int }
 
-impl RedBlackTree {
-    pub fn new() -> RedBlackTree {
-        return RedBlackTree { root: nil, size: 0 }
-    }
+impl RBTree {
+    pub fn new() -> RBTree { return RBTree { root: nil, size: 0 } }
+
     pub fn insert(self, key: int, value: any) {
+        let mut z = Node { key: key, value: value, color: Color::Red,
+                           parent: nil, left: nil, right: nil }
+        let mut y: Node? = nil; let mut x = self.root
+        while x != nil {
+            y = x
+            if key < x.key       { x = x.left }
+            else if key > x.key  { x = x.right }
+            else                 { x.value = value; return }
+        }
+        z.parent = y
+        if y == nil          { self.root = z }
+        else if key < y.key  { y.left = z }
+        else                 { y.right = z }
         self.size += 1
+        self.insert_fixup(z)
     }
+
     pub fn search(self, key: int) -> any {
+        let mut n = self.root
+        while n != nil {
+            if key == n.key { return n.value }
+            n = if key < n.key { n.left } else { n.right }
+        }
         return nil
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    fn rotate_left(self, x: Node) {
+        let y = x.right
+        x.right = y.left
+        if y.left != nil { y.left.parent = x }
+        y.parent = x.parent
+        if x.parent == nil         { self.root = y }
+        else if x == x.parent.left { x.parent.left = y }
+        else                       { x.parent.right = y }
+        y.left = x; x.parent = y
     }
+
+    fn rotate_right(self, x: Node) {
+        let y = x.left
+        x.left = y.right
+        if y.right != nil { y.right.parent = x }
+        y.parent = x.parent
+        if x.parent == nil          { self.root = y }
+        else if x == x.parent.right { x.parent.right = y }
+        else                        { x.parent.left = y }
+        y.right = x; x.parent = y
+    }
+
+    fn insert_fixup(self, z_in: Node) {
+        let mut z = z_in
+        while z.parent != nil && z.parent.color == Color::Red {
+            let gp = z.parent.parent
+            if z.parent == gp.left {
+                let uncle = gp.right
+                if uncle != nil && uncle.color == Color::Red {
+                    // Case 1: red uncle → recolor, move up.
+                    z.parent.color = Color::Black
+                    uncle.color = Color::Black
+                    gp.color = Color::Red
+                    z = gp
+                } else {
+                    if z == z.parent.right {
+                        z = z.parent
+                        self.rotate_left(z)
+                    }
+                    z.parent.color = Color::Black
+                    gp.color = Color::Red
+                    self.rotate_right(gp)
+                }
+            } else {
+                let uncle = gp.left
+                if uncle != nil && uncle.color == Color::Red {
+                    z.parent.color = Color::Black
+                    uncle.color = Color::Black
+                    gp.color = Color::Red
+                    z = gp
+                } else {
+                    if z == z.parent.left {
+                        z = z.parent
+                        self.rotate_right(z)
+                    }
+                    z.parent.color = Color::Black
+                    gp.color = Color::Red
+                    self.rotate_left(gp)
+                }
+            }
+            if z == self.root { break }
+        }
+        self.root.color = Color::Black
+    }
+
     pub fn size_of(self) -> int { return self.size }
+    pub fn black_height(self) -> int {
+        let mut bh = 0; let mut n = self.root
+        while n != nil {
+            if n.color == Color::Black { bh += 1 }
+            n = n.left
+        }
+        return bh
+    }
 }
 
 fn main() {
-    let ds = RedBlackTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Red-Black Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let t = RBTree.new()
+    for k in [7, 3, 18, 10, 22, 8, 11, 26] { t.insert(k, k) }
+    println("size=" + t.size_of() as str + " bh=" + t.black_height() as str)
+    println("search 11 -> " + t.search(11) as str)
 }
