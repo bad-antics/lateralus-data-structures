@@ -1,41 +1,115 @@
-// Data Structure: Trie
+// Trie / prefix tree (de la Briandais 1959; Fredkin 1960).
+//
+// A tree where each edge is labeled with a single character and a
+// path from root to a marked node spells a stored string. Every
+// stored string shares prefixes with its neighbors, giving O(m)
+// lookup (m = pattern length), independent of the number of stored
+// keys.
+//
+// Used by: word-completion / autocorrect, IP-routing tables (as a
+// bitwise trie — Patricia tries), spell-checkers, lexicographic
+// sorting, word-games (Scrabble/Boggle), regex engines, full-text
+// indexes (combined with suffix-tree), DNS resolvers, and the
+// deterministic finite automata of lex/flex.
+
 module data_structures.trie
 
-pub struct TrieNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub children: map,       // char -> Node
+    pub is_end: bool,
+    pub value: any,
+    pub prefix_count: int,
 }
 
-pub struct Trie {
-    root: any?
-    size: int
-}
+pub struct Trie { pub root: Node, pub size: int }
 
 impl Trie {
     pub fn new() -> Trie {
-        return Trie { root: nil, size: 0 }
+        return Trie { root: Node { children: {}, is_end: false, value: nil, prefix_count: 0 },
+                      size: 0 }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn insert(self, word: str, value: any) {
+        let mut n = self.root
+        n.prefix_count += 1
+        for ch in word {
+            if !n.children.has(ch) {
+                n.children[ch] = Node { children: {}, is_end: false, value: nil, prefix_count: 0 }
+            }
+            n = n.children[ch]
+            n.prefix_count += 1
+        }
+        if !n.is_end { self.size += 1 }
+        n.is_end = true
+        n.value = value
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn search(self, word: str) -> any {
+        let n = self.find(word)
+        if n == nil || !n.is_end { return nil }
+        return n.value
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn starts_with(self, prefix: str) -> bool {
+        return self.find(prefix) != nil
     }
+
+    /// Count stored words with the given prefix — O(m).
+    pub fn count_prefix(self, prefix: str) -> int {
+        let n = self.find(prefix)
+        return if n == nil { 0 } else { n.prefix_count }
+    }
+
+    pub fn delete(self, word: str) -> bool {
+        return delete_rec(self.root, word, 0)
+    }
+
+    /// Return all stored words matching `prefix` — O(p + total output).
+    pub fn words_with_prefix(self, prefix: str) -> list {
+        let n = self.find(prefix)
+        let mut out = []
+        if n != nil { collect(n, prefix, out) }
+        return out
+    }
+
+    fn find(self, s: str) -> Node? {
+        let mut n = self.root
+        for ch in s {
+            if !n.children.has(ch) { return nil }
+            n = n.children[ch]
+        }
+        return n
+    }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
+fn collect(n: Node, prefix: str, out: list) {
+    if n.is_end { out = push(out, prefix) }
+    for (ch, child) in n.children { collect(child, prefix + ch, out) }
+}
+
+fn delete_rec(n: Node, word: str, depth: int) -> bool {
+    if depth == len(word) {
+        if !n.is_end { return false }
+        n.is_end = false; n.value = nil
+        return true
+    }
+    let ch = word[depth]
+    if !n.children.has(ch) { return false }
+    let child = n.children[ch]
+    let ok = delete_rec(child, word, depth + 1)
+    if ok {
+        child.prefix_count -= 1
+        if child.prefix_count == 0 { n.children.remove(ch) }
+    }
+    return ok
+}
+
 fn main() {
-    let ds = Trie.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Trie size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let t = Trie.new()
+    for w in ["apple","app","apply","ape","apron","bat","batch"] { t.insert(w, true) }
+    println("starts_with 'app': " + t.starts_with("app") as str)
+    println("words w/prefix 'app': " + t.words_with_prefix("app") as str)
+    println("count_prefix 'app': " + t.count_prefix("app") as str)   // app, apple, apply
 }
