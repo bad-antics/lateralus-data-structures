@@ -1,41 +1,88 @@
-// Data Structure: Priority Queue
+// Generic priority queue — min-heap with explicit (priority, value)
+// entries. Supports stable insertion order via a monotonic counter as
+// tie-breaker (classic Python `heapq`-with-counter pattern).
+//
+// The abstract PQ interface:
+//   push(priority, value)
+//   pop() → value with smallest priority
+//   peek() → same, no removal
+//   size / is_empty
+//
+// Real-world uses you care about: Dijkstra, A*, Prim's MST, K-way
+// merge, Huffman coding, task schedulers, event-driven simulation,
+// OS ready-queues, TCP retransmission timers.
+
 module data_structures.priority_queue
 
-pub struct PriorityQueueNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
-}
+pub struct Entry { pub priority: int, pub seq: int, pub value: any }
 
-pub struct PriorityQueue {
-    root: any?
-    size: int
-}
+pub struct PriorityQueue { pub data: list, pub counter: int }
 
 impl PriorityQueue {
-    pub fn new() -> PriorityQueue {
-        return PriorityQueue { root: nil, size: 0 }
+    pub fn new() -> PriorityQueue { return PriorityQueue { data: [], counter: 0 } }
+
+    pub fn push(self, priority: int, value: any) {
+        let e = Entry { priority: priority, seq: self.counter, value: value }
+        self.counter += 1
+        self.data = push(self.data, e)
+        sift_up(self.data, len(self.data) - 1)
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn pop(self) -> any {
+        if len(self.data) == 0 { throw Error("priority_queue: empty") }
+        let top = self.data[0].value
+        let last = self.data[len(self.data) - 1]
+        self.data = slice(self.data, 0, len(self.data) - 1)
+        if len(self.data) > 0 {
+            self.data[0] = last
+            sift_down(self.data, 0)
+        }
+        return top
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn peek(self) -> any {
+        if len(self.data) == 0 { throw Error("priority_queue: empty") }
+        return self.data[0].value
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn size(self) -> int { return len(self.data) }
+    pub fn is_empty(self) -> bool { return len(self.data) == 0 }
+}
+
+fn less(a: Entry, b: Entry) -> bool {
+    if a.priority != b.priority { return a.priority < b.priority }
+    return a.seq < b.seq   // FIFO tie-break for stability
+}
+
+fn sift_up(a: list, start: int) {
+    let mut i = start
+    while i > 0 {
+        let p = (i - 1) / 2
+        if !less(a[i], a[p]) { break }
+        let t = a[i]; a[i] = a[p]; a[p] = t
+        i = p
     }
-    pub fn size_of(self) -> int { return self.size }
+}
+
+fn sift_down(a: list, start: int) {
+    let n = len(a); let mut i = start
+    while true {
+        let l = 2 * i + 1; let r = 2 * i + 2
+        let mut best = i
+        if l < n && less(a[l], a[best]) { best = l }
+        if r < n && less(a[r], a[best]) { best = r }
+        if best == i { break }
+        let t = a[i]; a[i] = a[best]; a[best] = t
+        i = best
+    }
 }
 
 fn main() {
-    let ds = PriorityQueue.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Priority Queue size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let pq = PriorityQueue.new()
+    pq.push(5, "low")
+    pq.push(1, "urgent")
+    pq.push(3, "normal")
+    pq.push(1, "also urgent")   // ties broken by insertion order
+    while !pq.is_empty() { println(pq.pop() as str) }
+    // urgent, also urgent, normal, low
 }
