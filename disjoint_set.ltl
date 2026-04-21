@@ -1,41 +1,88 @@
-// Data Structure: Disjoint Set (Union-Find)
+// Disjoint-Set Union / Union-Find (Galler & Fischer, 1964;
+// Tarjan 1975 for the near-O(α(n)) complexity analysis).
+//
+// Maintains a partition of {0..n-1} under two operations:
+//   find(x): which set does x belong to?
+//   union(x, y): merge the two sets containing x and y.
+//
+// Two optimizations, both required for near-constant time:
+//   1. Union by rank (or size): attach smaller tree under larger.
+//   2. Path compression: flatten the tree during every find.
+//
+// Amortized O(α(n)) per op where α is the inverse Ackermann function
+// — effectively constant for any astronomical n. Proof: Tarjan (1975),
+// refined by Hopcroft-Ullman and Fredman-Saks.
+//
+// Applications: Kruskal's MST, offline LCA, image connected-
+// components (2-pass Hoshen-Kopelman), dynamic graph connectivity,
+// percolation simulation, Boruvka's algorithm.
+
 module data_structures.disjoint_set
 
-pub struct DisjointSetUnionFindNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct DSU {
+    pub parent: list,
+    pub rank: list,
+    pub size: list,
+    pub num_sets: int,
 }
 
-pub struct DisjointSetUnionFind {
-    root: any?
-    size: int
-}
+impl DSU {
+    pub fn new(n: int) -> DSU {
+        let mut p = []; let mut r = []; let mut s = []
+        let mut i = 0
+        while i < n {
+            p = push(p, i); r = push(r, 0); s = push(s, 1)
+            i += 1
+        }
+        return DSU { parent: p, rank: r, size: s, num_sets: n }
+    }
 
-impl DisjointSetUnionFind {
-    pub fn new() -> DisjointSetUnionFind {
-        return DisjointSetUnionFind { root: nil, size: 0 }
+    /// Find with path compression (iterative two-pass).
+    pub fn find(self, x: int) -> int {
+        // First pass: locate root.
+        let mut root = x
+        while self.parent[root] != root { root = self.parent[root] }
+        // Second pass: flatten.
+        let mut cur = x
+        while self.parent[cur] != root {
+            let nxt = self.parent[cur]
+            self.parent[cur] = root
+            cur = nxt
+        }
+        return root
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    /// Union by rank. Returns true if the two were in different sets.
+    pub fn union(self, x: int, y: int) -> bool {
+        let rx = self.find(x); let ry = self.find(y)
+        if rx == ry { return false }
+        if self.rank[rx] < self.rank[ry] {
+            self.parent[rx] = ry
+            self.size[ry] += self.size[rx]
+        } else if self.rank[rx] > self.rank[ry] {
+            self.parent[ry] = rx
+            self.size[rx] += self.size[ry]
+        } else {
+            self.parent[ry] = rx
+            self.rank[rx] += 1
+            self.size[rx] += self.size[ry]
+        }
+        self.num_sets -= 1
+        return true
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn connected(self, x: int, y: int) -> bool {
+        return self.find(x) == self.find(y)
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
-    }
-    pub fn size_of(self) -> int { return self.size }
+
+    pub fn size_of_set(self, x: int) -> int { return self.size[self.find(x)] }
+    pub fn count(self) -> int { return self.num_sets }
 }
 
 fn main() {
-    let ds = DisjointSetUnionFind.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Disjoint Set (Union-Find) size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let d = DSU.new(10)
+    d.union(0, 1); d.union(2, 3); d.union(1, 3)
+    println("connected(0,2): " + d.connected(0, 2) as str)   // true
+    println("num sets: " + d.count() as str)                 // 7
+    println("set size containing 0: " + d.size_of_set(0) as str)   // 4
 }
