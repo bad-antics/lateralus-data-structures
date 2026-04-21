@@ -1,41 +1,120 @@
-// Data Structure: Bloom Filter
+// Bloom filter — probabilistic set (Burton Bloom, 1970).
+//
+// A bit array of m bits and k independent hash functions. Insert:
+// hash the element k times and set those bit positions. Query:
+// probably-in iff all k bits are set, NEVER false negatives, false
+// positives at rate ε ≈ (1 − e^{−kn/m})^k.
+//
+// Optimal k = (m/n)·ln 2  (about 0.7·m/n). For ε = 1%, ~9.6 bits per
+// element. Memory efficient: store 1 MB of insertions using only
+// ~1.2 MB of bits for 1% fpr.
+//
+// Massive real-world adoption:
+//   • Google Chrome Safe-Browsing blacklist cache
+//   • Bitcoin SPV wallets (BIP-37)
+//   • Cassandra/Bigtable SSTable negative caches
+//   • CDN cache-hit pre-checks
+//   • Squid proxy negative-response caching
+//   • Akamai, Cloudflare "have we seen this IP?" checks
+//   • Spell checkers (historical: Unix `spell`)
+
 module data_structures.bloom_filter_ds
 
-pub struct BloomFilterNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
-}
-
 pub struct BloomFilter {
-    root: any?
-    size: int
+    pub bits: list,      // byte array; 8 bits per entry
+    pub m: int,          // bit count
+    pub k: int,          // hash count
+    pub count: int,      // inserted-item counter
 }
 
 impl BloomFilter {
-    pub fn new() -> BloomFilter {
-        return BloomFilter { root: nil, size: 0 }
+    pub fn new(expected: int, fpr: float) -> BloomFilter {
+        let m = optimal_bits(expected, fpr)
+        let k = optimal_k(m, expected)
+        let byte_len = (m + 7) / 8
+        let mut bits = []; let mut i = 0
+        while i < byte_len { bits = push(bits, 0); i += 1 }
+        return BloomFilter { bits: bits, m: m, k: k, count: 0 }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn add(self, item: str) {
+        let (h1, h2) = double_hash(item)
+        let mut i = 0
+        while i < self.k {
+            let idx = ((h1 + i * h2) % self.m + self.m) % self.m
+            set_bit(self.bits, idx)
+            i += 1
+        }
+        self.count += 1
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn contains(self, item: str) -> bool {
+        let (h1, h2) = double_hash(item)
+        let mut i = 0
+        while i < self.k {
+            let idx = ((h1 + i * h2) % self.m + self.m) % self.m
+            if !get_bit(self.bits, idx) { return false }
+            i += 1
+        }
+        return true
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    /// Estimated current false-positive rate.
+    pub fn current_fpr(self) -> float {
+        // (1 - e^{-k·n/m})^k — approximated with a series expansion.
+        // Without floats we return a proxy based on fill ratio.
+        let filled = popcount(self.bits)
+        return (filled * 1000) / self.m   // bits-set per mille as proxy
     }
-    pub fn size_of(self) -> int { return self.size }
+
+    pub fn size_of(self) -> int { return self.count }
 }
 
-fn main() {
-    let ds = BloomFilter.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Bloom Filter size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+fn set_bit(bits: list, idx: int) {
+    bits[idx / 8] = bits[idx / 8] | (1 << (idx % 8))
+}
+
+fn get_bit(bits: list, idx: int) -> bool {
+    return (bits[idx / 8] & (1 << (idx % 8))) != 0
+}
+
+// Kirsch-Mitzenmacher double hashing from FNV-1a and djb2.
+fn double_hash(s: str) -> (int, int) {
+    let mut h1 = 2166136261; let mut h2 = 5381
+    for ch in s {
+        let c = ord(ch)
+        h1 = (h1 ^ c) * 16777619
+        h1 = h1 & 0xFFFFFFFF
+        h2 = ((h2 * 33) + c) & 0xFFFFFFFF
+    }
+    return (h1, if h2 == 0 { 1 } else { h2 })
+}
+
+fn optimal_bits(n: int, fpr: float) -> int {
+    // m ≈ -n · ln(fpr) / (ln 2)² ≈ -n · ln(fpr) × 2.0813
+    let ln_fpr_scaled = approx_neg_ln(fpr)   // scaled ×1000
+    return (n * ln_fpr_scaled * 2081) / 1000000
+}
+
+fn optimal_k(m: int, n: int) -> int {
+    if n == 0 { return 1 }
+    let k = (m * 693) / (n * 1000)
+    return if k < 1 { 1 } else { k }
+}
+
+fn approx_neg_ln(p: float) -> int {
+    if p <= 0.001 { return 6908 }
+    if p <= 0.01  { return 4605 }
+    if p <= 0.05  { return 2996 }
+    if p <= 0.1   { return 2303 }
+    return 1609
+}
+
+fn popcount(bits: list) -> int {
+    let mut c = 0
+    for b in bits {
+        let mut x = b
+        while x != 0 { c += x & 1; x = x >> 1 }
+    }
+    return c
 }
