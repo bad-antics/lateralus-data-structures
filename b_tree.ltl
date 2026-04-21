@@ -1,41 +1,113 @@
-// Data Structure: B-Tree
+// B-Tree (Bayer & McCreight, 1972) — the workhorse of disk storage.
+//
+// A B-tree of order t has nodes with between t-1 and 2t-1 keys
+// (root may have ≥1). All leaves lie at the same depth. Large fan-out
+// → short trees → few disk seeks, critical when each node read costs
+// a page fetch. This is why nearly every database and filesystem index
+// is a B-tree variant:
+//   • B+tree: all data in leaves, linked — great range scans.
+//     Used by: MySQL InnoDB, PostgreSQL btree, SQLite, Oracle,
+//     NTFS, HFS+, APFS, ext4 htree, XFS, ReiserFS, btrfs.
+//   • B*tree: ≥2/3 full, used by ReiserFS.
+//   • LSM-tree (log-structured merge) — the "competitor" for
+//     write-heavy workloads (LevelDB, RocksDB, Cassandra).
+//
+// This is a plain in-memory B-tree supporting search/insert/delete.
+// Order t = 3 by default (minimum keys 2, maximum 5 per node).
+
 module data_structures.b_tree
 
-pub struct BTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub keys: list,       // ascending
+    pub values: list,
+    pub children: list,   // len = len(keys)+1 for internal; empty for leaf
+    pub leaf: bool,
 }
 
-pub struct BTree {
-    root: any?
-    size: int
-}
+pub struct BTree { pub root: Node, pub t: int, pub size: int }
 
 impl BTree {
-    pub fn new() -> BTree {
-        return BTree { root: nil, size: 0 }
+    pub fn new(t: int) -> BTree {
+        if t < 2 { throw Error("BTree: order t must be ≥ 2") }
+        return BTree { root: Node { keys: [], values: [], children: [], leaf: true }, t: t, size: 0 }
     }
+
+    pub fn search(self, key: int) -> any {
+        return search_in(self.root, key)
+    }
+
     pub fn insert(self, key: int, value: any) {
+        let r = self.root
+        if len(r.keys) == 2 * self.t - 1 {
+            // Split full root.
+            let new_root = Node { keys: [], values: [], children: [r], leaf: false }
+            split_child(new_root, 0, self.t)
+            self.root = new_root
+        }
+        insert_nonfull(self.root, key, value, self.t)
         self.size += 1
     }
-    pub fn search(self, key: int) -> any {
-        return nil
-    }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
-    }
+
     pub fn size_of(self) -> int { return self.size }
+    pub fn height(self) -> int  { return height_of(self.root) }
+}
+
+fn search_in(n: Node, key: int) -> any {
+    let mut i = 0
+    while i < len(n.keys) && key > n.keys[i] { i += 1 }
+    if i < len(n.keys) && key == n.keys[i] { return n.values[i] }
+    if n.leaf { return nil }
+    return search_in(n.children[i], key)
+}
+
+fn split_child(parent: Node, i: int, t: int) {
+    let y = parent.children[i]
+    let z = Node {
+        keys:     slice(y.keys, t, 2 * t - 1),
+        values:   slice(y.values, t, 2 * t - 1),
+        children: if y.leaf { [] } else { slice(y.children, t, 2 * t) },
+        leaf: y.leaf,
+    }
+    let mid_key = y.keys[t - 1]
+    let mid_val = y.values[t - 1]
+    y.keys = slice(y.keys, 0, t - 1)
+    y.values = slice(y.values, 0, t - 1)
+    if !y.leaf { y.children = slice(y.children, 0, t) }
+    parent.children = insert_at(parent.children, i + 1, z)
+    parent.keys     = insert_at(parent.keys, i, mid_key)
+    parent.values   = insert_at(parent.values, i, mid_val)
+}
+
+fn insert_nonfull(n: Node, key: int, value: any, t: int) {
+    let mut i = len(n.keys) - 1
+    if n.leaf {
+        while i >= 0 && key < n.keys[i] { i -= 1 }
+        if i >= 0 && n.keys[i] == key { n.values[i] = value; return }
+        n.keys   = insert_at(n.keys, i + 1, key)
+        n.values = insert_at(n.values, i + 1, value)
+    } else {
+        while i >= 0 && key < n.keys[i] { i -= 1 }
+        i += 1
+        if len(n.children[i].keys) == 2 * t - 1 {
+            split_child(n, i, t)
+            if key > n.keys[i] { i += 1 }
+        }
+        insert_nonfull(n.children[i], key, value, t)
+    }
+}
+
+fn height_of(n: Node) -> int {
+    if n.leaf { return 1 }
+    return 1 + height_of(n.children[0])
+}
+
+fn insert_at(l: list, i: int, v: any) -> list {
+    return slice(l, 0, i) + [v] + slice(l, i, len(l))
 }
 
 fn main() {
-    let ds = BTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("B-Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let bt = BTree.new(3)
+    for k in [10, 20, 5, 6, 12, 30, 7, 17] { bt.insert(k, k * k) }
+    println("size=" + bt.size_of() as str + " height=" + bt.height() as str)
+    println("search 12 -> " + bt.search(12) as str)
 }
