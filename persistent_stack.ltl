@@ -1,41 +1,70 @@
-// Data Structure: Persistent Stack
+// Persistent (immutable) stack — Okasaki, Purely Functional Data Structures.
+//
+// In a persistent data structure, every "update" returns a NEW version
+// while the old version remains intact and unchanged — safe to share
+// across threads or keep as an undo snapshot.
+//
+// For stacks this is trivial: a singly linked list. Pushing v onto xs
+// creates a new cons cell with tail xs. The old xs is untouched; any
+// other references to it still see the same sequence. Therefore both
+// push and pop are O(1) AND O(0) extra memory beyond the new cell.
+//
+// Foundation for immutable languages: ML, Haskell, Clojure, Elixir.
+// Also the basis of copy-on-write undo stacks in text editors,
+// transactional state in Redux / Elm / NgRx, and branch histories in
+// Git-like content-addressable storage.
+
 module data_structures.persistent_stack
 
-pub struct PersistentStackNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
-}
+pub struct Cell { pub head: any, pub tail: Cell? }
+pub struct PStack { pub top: Cell?, pub size: int }
 
-pub struct PersistentStack {
-    root: any?
-    size: int
-}
+impl PStack {
+    pub fn empty() -> PStack { return PStack { top: nil, size: 0 } }
 
-impl PersistentStack {
-    pub fn new() -> PersistentStack {
-        return PersistentStack { root: nil, size: 0 }
+    pub fn push(self, v: any) -> PStack {
+        return PStack { top: Cell { head: v, tail: self.top }, size: self.size + 1 }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn pop(self) -> (PStack, any) {
+        if self.top == nil { throw Error("PStack: pop from empty") }
+        return (PStack { top: self.top.tail, size: self.size - 1 }, self.top.head)
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn peek(self) -> any {
+        if self.top == nil { throw Error("PStack: peek on empty") }
+        return self.top.head
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn is_empty(self) -> bool { return self.top == nil }
+    pub fn size_of(self) -> int   { return self.size }
+
+    /// O(n) materialize — only when you need a concrete list.
+    pub fn to_list(self) -> list {
+        let mut out = []; let mut c = self.top
+        while c != nil { out = push(out, c.head); c = c.tail }
+        return out
     }
-    pub fn size_of(self) -> int { return self.size }
+
+    /// Reverse in O(n) — returns a new PStack in opposite order.
+    /// Useful as "build via push, read in original order".
+    pub fn reverse(self) -> PStack {
+        let mut acc = PStack.empty(); let mut c = self.top
+        while c != nil { acc = acc.push(c.head); c = c.tail }
+        return acc
+    }
 }
 
 fn main() {
-    let ds = PersistentStack.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Persistent Stack size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let s0 = PStack.empty()
+    let s1 = s0.push(1)
+    let s2 = s1.push(2)
+    let s3 = s2.push(3)
+    // Old versions unchanged:
+    println("s1 size=" + s1.size_of() as str)   // 1
+    println("s3 top="  + s3.peek() as str)      // 3
+    // Branching: two different histories sharing the "push 1" tail.
+    let sA = s1.push(99)
+    let sB = s1.push(42)
+    println("sA top=" + sA.peek() as str + " sB top=" + sB.peek() as str)
 }
