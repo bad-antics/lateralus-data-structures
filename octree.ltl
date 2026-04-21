@@ -1,41 +1,98 @@
-// Data Structure: Octree
+// Octree — 3-D generalization of the quadtree.
+//
+// Each internal node is an axis-aligned box with EIGHT children
+// covering the eight octants (xyz sign combinations). Leaves hold up
+// to `capacity` points; overflow triggers subdivision.
+//
+// Real-world:
+//   • 3-D graphics frustum culling (Quake, Unity, Unreal use variants).
+//   • Voxel games: Minecraft's chunk LOD, VoxelFarm, Teardown.
+//   • LiDAR / point-cloud processing (PCL library).
+//   • N-body simulation in astrophysics (Barnes-Hut 3-D).
+//   • Medical volumetric imaging (CT/MRI compression).
+//   • Collision detection (Sparse Voxel Octree, NVIDIA GVDB).
+
 module data_structures.octree
 
-pub struct OctreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
-}
+pub struct Box { pub x: int, pub y: int, pub z: int, pub w: int, pub h: int, pub d: int }
+pub struct Point3 { pub x: int, pub y: int, pub z: int, pub data: any }
 
 pub struct Octree {
-    root: any?
-    size: int
+    pub bounds: Box,
+    pub capacity: int,
+    pub points: list,
+    pub children: list,   // 8 Octree nodes when subdivided, else []
+    pub divided: bool,
 }
 
 impl Octree {
-    pub fn new() -> Octree {
-        return Octree { root: nil, size: 0 }
+    pub fn new(bounds: Box, capacity: int) -> Octree {
+        return Octree { bounds: bounds, capacity: capacity,
+                        points: [], children: [], divided: false }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
-    }
-    pub fn search(self, key: int) -> any {
-        return nil
-    }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
+
+    pub fn insert(self, p: Point3) -> bool {
+        if !contains(self.bounds, p) { return false }
+        if !self.divided && len(self.points) < self.capacity {
+            self.points = push(self.points, p); return true
+        }
+        if !self.divided { self.subdivide() }
+        for child in self.children { if child.insert(p) { return true } }
         return false
     }
-    pub fn size_of(self) -> int { return self.size }
+
+    fn subdivide(self) {
+        let b = self.bounds
+        let hw = b.w / 2; let hh = b.h / 2; let hd = b.d / 2
+        let mut kids = []
+        let mut ox = 0
+        while ox < 2 {
+            let mut oy = 0
+            while oy < 2 {
+                let mut oz = 0
+                while oz < 2 {
+                    let child_box = Box {
+                        x: b.x + ox * hw, y: b.y + oy * hh, z: b.z + oz * hd,
+                        w: if ox == 0 { hw } else { b.w - hw },
+                        h: if oy == 0 { hh } else { b.h - hh },
+                        d: if oz == 0 { hd } else { b.d - hd },
+                    }
+                    kids = push(kids, Octree.new(child_box, self.capacity))
+                    oz += 1
+                }
+                oy += 1
+            }
+            ox += 1
+        }
+        self.children = kids
+        self.divided = true
+        for p in self.points {
+            for child in self.children { if child.insert(p) { break } }
+        }
+        self.points = []
+    }
+
+    pub fn query_range(self, range: Box) -> list {
+        let mut out = []
+        if !intersects(self.bounds, range) { return out }
+        for p in self.points {
+            if contains(range, p) { out = push(out, p) }
+        }
+        if self.divided {
+            for child in self.children { out = out + child.query_range(range) }
+        }
+        return out
+    }
 }
 
-fn main() {
-    let ds = Octree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Octree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+fn contains(b: Box, p: Point3) -> bool {
+    return p.x >= b.x && p.x < b.x + b.w
+        && p.y >= b.y && p.y < b.y + b.h
+        && p.z >= b.z && p.z < b.z + b.d
+}
+
+fn intersects(a: Box, b: Box) -> bool {
+    return !(a.x + a.w <= b.x || b.x + b.w <= a.x
+          || a.y + a.h <= b.y || b.y + b.h <= a.y
+          || a.z + a.d <= b.z || b.z + b.d <= a.z)
 }
