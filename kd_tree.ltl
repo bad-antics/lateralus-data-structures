@@ -1,41 +1,96 @@
-// Data Structure: k-d Tree
+// k-D Tree (Bentley, 1975) — BSP for k-dimensional points.
+//
+// At depth d we split by axis (d mod k). Nearest-neighbor and range
+// queries prune whole subtrees by comparing the query's distance to
+// the splitting hyperplane. Build is O(n log n); 1-NN is O(log n)
+// expected in low dimensions but degrades toward O(n) past ~20 dims
+// (curse of dimensionality → prefer approximate structures like HNSW,
+// LSH, or Annoy/FAISS indexes).
+//
+// Real-world: photon mapping in ray tracing, k-means initialization,
+// physics particle-pair neighbor finding (Barnes-Hut), robot motion
+// planning, GIS spatial indexes, scipy.spatial.cKDTree, SLAM landmark
+// association.
+
 module data_structures.kd_tree
 
-pub struct kdTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub point: list, pub data: any, pub axis: int,
+    pub left: Node?, pub right: Node?,
 }
 
-pub struct kdTree {
-    root: any?
-    size: int
-}
+pub struct KdTree { pub root: Node?, pub k: int, pub size: int }
 
-impl kdTree {
-    pub fn new() -> kdTree {
-        return kdTree { root: nil, size: 0 }
+impl KdTree {
+    pub fn new(k: int) -> KdTree {
+        if k < 1 { throw Error("kd_tree: k must be ≥ 1") }
+        return KdTree { root: nil, k: k, size: 0 }
     }
-    pub fn insert(self, key: int, value: any) {
+
+    pub fn insert(self, point: list, data: any) {
+        if len(point) != self.k { throw Error("kd_tree: wrong dimensionality") }
+        self.root = insert_rec(self.root, point, data, 0, self.k)
         self.size += 1
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    /// Brute-force exact nearest neighbor with proper branch-pruning.
+    pub fn nearest(self, query: list) -> (list, any)? {
+        if self.root == nil { return nil }
+        let state = { best: self.root, best_dist: dist_sq(query, self.root.point) }
+        nearest_rec(self.root, query, self.k, state)
+        return (state.best.point, state.best.data)
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    /// All points within `radius` (Euclidean).
+    pub fn range_search(self, query: list, radius: int) -> list {
+        let mut out = []
+        range_rec(self.root, query, radius * radius, self.k, out)
+        return out
     }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
+fn insert_rec(n: Node?, point: list, data: any, depth: int, k: int) -> Node {
+    if n == nil {
+        return Node { point: point, data: data, axis: depth % k, left: nil, right: nil }
+    }
+    let ax = depth % k
+    if point[ax] < n.point[ax] { n.left  = insert_rec(n.left,  point, data, depth + 1, k) }
+    else                        { n.right = insert_rec(n.right, point, data, depth + 1, k) }
+    return n
+}
+
+fn dist_sq(a: list, b: list) -> int {
+    let mut s = 0; let mut i = 0
+    while i < len(a) { let d = a[i] - b[i]; s += d * d; i += 1 }
+    return s
+}
+
+fn nearest_rec(n: Node?, q: list, k: int, state: any) {
+    if n == nil { return }
+    let d = dist_sq(q, n.point)
+    if d < state.best_dist { state.best = n; state.best_dist = d }
+    let diff = q[n.axis] - n.point[n.axis]
+    let (near, far) = if diff < 0 { (n.left, n.right) } else { (n.right, n.left) }
+    nearest_rec(near, q, k, state)
+    // Only descend into far side if splitting plane is within best_dist.
+    if diff * diff < state.best_dist {
+        nearest_rec(far, q, k, state)
+    }
+}
+
+fn range_rec(n: Node?, q: list, r_sq: int, k: int, out: list) {
+    if n == nil { return }
+    if dist_sq(q, n.point) <= r_sq { out = push(out, n.point) }
+    let diff = q[n.axis] - n.point[n.axis]
+    if diff - r_sq <= 0 { range_rec(n.left,  q, r_sq, k, out) }
+    if diff + r_sq >= 0 { range_rec(n.right, q, r_sq, k, out) }
+}
+
 fn main() {
-    let ds = kdTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("k-d Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let t = KdTree.new(2)
+    for p in [[2,3],[5,4],[9,6],[4,7],[8,1],[7,2]] { t.insert(p, p) }
+    let nn = t.nearest([9, 2])
+    if nn != nil { println("nearest to (9,2) -> " + nn.0 as str) }   // (8,1) or (9,6)
 }
