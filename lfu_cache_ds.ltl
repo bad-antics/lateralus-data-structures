@@ -1,41 +1,132 @@
-// Data Structure: LFU Cache
+// LFU Cache — Least Frequently Used eviction, O(1) get/put (Shi et al., 2010).
+//
+// The classic O(1) LFU design (Prof. Ketan Shah, ICCM 2010). Two
+// hash maps + a doubly-linked list of FREQUENCY BUCKETS, where each
+// bucket is itself a doubly-linked list of nodes that share a hit
+// count. On every access we unlink the node from its current bucket
+// and link it into the next-frequency bucket, creating that bucket if
+// needed. Eviction pops from the FRONT of the smallest-frequency
+// bucket → oldest among least-used.
+//
+// Why not plain counter+sort? Sort is O(n log n) per access.
+// Why not min-heap? O(log n) per access. Shah's structure makes all
+// ops amortized O(1).
+//
+// Used in recommendation systems, content-cache tiers, web-server
+// static-file caches, and is the inspiration for Caffeine's
+// TinyLFU-based admission policy.
+
 module data_structures.lfu_cache_ds
 
-pub struct LFUCacheNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub key: any, pub value: any, pub freq: int,
+    pub prev: Node?, pub next: Node?,
+}
+
+pub struct Bucket {
+    pub freq: int,
+    pub head: Node, pub tail: Node,       // sentinels
+    pub size: int,
+    pub prev: Bucket?, pub next: Bucket?,
 }
 
 pub struct LFUCache {
-    root: any?
-    size: int
+    pub capacity: int, pub size: int,
+    pub map: map,                     // key -> Node
+    pub freq_map: map,                // freq -> Bucket
+    pub buckets_head: Bucket, pub buckets_tail: Bucket,   // dll of buckets, low → high freq
 }
 
 impl LFUCache {
-    pub fn new() -> LFUCache {
-        return LFUCache { root: nil, size: 0 }
+    pub fn new(capacity: int) -> LFUCache {
+        if capacity <= 0 { throw Error("LFU: capacity > 0") }
+        let bh = sentinel_bucket(); let bt = sentinel_bucket()
+        bh.next = bt; bt.prev = bh
+        return LFUCache {
+            capacity: capacity, size: 0, map: {}, freq_map: {},
+            buckets_head: bh, buckets_tail: bt,
+        }
     }
-    pub fn insert(self, key: int, value: any) {
+
+    pub fn get(self, key: any) -> any {
+        if !self.map.has(key) { return nil }
+        let n = self.map[key]
+        self.bump(n)
+        return n.value
+    }
+
+    pub fn put(self, key: any, value: any) {
+        if self.map.has(key) {
+            let n = self.map[key]; n.value = value; self.bump(n); return
+        }
+        if self.size == self.capacity { self.evict() }
+        let n = Node { key: key, value: value, freq: 1, prev: nil, next: nil }
+        let b = self.get_or_create_bucket_after(self.buckets_head, 1)
+        bucket_insert_tail(b, n)
+        self.map[key] = n
         self.size += 1
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    fn bump(self, n: Node) {
+        let old_b = self.freq_map[n.freq]
+        bucket_unlink(old_b, n)
+        n.freq += 1
+        let new_b = self.get_or_create_bucket_after(old_b, n.freq)
+        bucket_insert_tail(new_b, n)
+        if old_b.size == 0 { self.remove_bucket(old_b) }
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    fn evict(self) {
+        let first = self.buckets_head.next
+        if first == self.buckets_tail { return }
+        let victim = first.head.next    // front of the lowest-freq bucket
+        bucket_unlink(first, victim)
+        self.map.remove(victim.key)
+        self.size -= 1
+        if first.size == 0 { self.remove_bucket(first) }
     }
+
+    fn get_or_create_bucket_after(self, after: Bucket, freq: int) -> Bucket {
+        if self.freq_map.has(freq) { return self.freq_map[freq] }
+        let b = fresh_bucket(freq)
+        // Insert sorted by freq ascending; `after` is a valid predecessor.
+        let mut ptr = after
+        while ptr.next != self.buckets_tail && ptr.next.freq < freq { ptr = ptr.next }
+        b.next = ptr.next; b.prev = ptr
+        ptr.next.prev = b; ptr.next = b
+        self.freq_map[freq] = b
+        return b
+    }
+
+    fn remove_bucket(self, b: Bucket) {
+        b.prev.next = b.next; b.next.prev = b.prev
+        self.freq_map.remove(b.freq)
+    }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
-fn main() {
-    let ds = LFUCache.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("LFU Cache size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+fn sentinel_bucket() -> Bucket {
+    let h = Node { key: nil, value: nil, freq: 0, prev: nil, next: nil }
+    let t = Node { key: nil, value: nil, freq: 0, prev: nil, next: nil }
+    h.next = t; t.prev = h
+    return Bucket { freq: -1, head: h, tail: t, size: 0, prev: nil, next: nil }
+}
+
+fn fresh_bucket(freq: int) -> Bucket {
+    let h = Node { key: nil, value: nil, freq: 0, prev: nil, next: nil }
+    let t = Node { key: nil, value: nil, freq: 0, prev: nil, next: nil }
+    h.next = t; t.prev = h
+    return Bucket { freq: freq, head: h, tail: t, size: 0, prev: nil, next: nil }
+}
+
+fn bucket_insert_tail(b: Bucket, n: Node) {
+    n.prev = b.tail.prev; n.next = b.tail
+    b.tail.prev.next = n; b.tail.prev = n
+    b.size += 1
+}
+
+fn bucket_unlink(b: Bucket, n: Node) {
+    n.prev.next = n.next; n.next.prev = n.prev
+    b.size -= 1
 }
