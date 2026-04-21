@@ -1,41 +1,108 @@
-// Data Structure: Radix Tree
+// Radix Tree / Patricia Trie (Morrison, 1968) — compressed trie.
+//
+// Edges are labeled with STRINGS instead of single characters, so
+// chains of one-child nodes collapse into a single edge. Memory:
+// O(total key chars) instead of O(sum of key lengths × alphabet size).
+// Lookup still O(m).
+//
+// Used by: Linux kernel (`struct radix_tree_root` for pagecache,
+// IDR, and lib/radix-tree.c), FreeBSD routing table, Apache httpd
+// URL dispatch, React Router, PostgreSQL's GIN index internals,
+// Python's CPython dictionary intern (compact dicts), Redis streams.
+
 module data_structures.radix_tree
 
-pub struct RadixTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub edge: str,           // label from this node to parent; root has ""
+    pub children: map,       // first-char -> Node
+    pub is_end: bool,
+    pub value: any,
 }
 
-pub struct RadixTree {
-    root: any?
-    size: int
-}
+pub struct RadixTree { pub root: Node, pub size: int }
 
 impl RadixTree {
     pub fn new() -> RadixTree {
-        return RadixTree { root: nil, size: 0 }
+        return RadixTree { root: Node { edge: "", children: {}, is_end: false, value: nil }, size: 0 }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn insert(self, key: str, value: any) {
+        let mut n = self.root; let mut k = key
+        while len(k) > 0 {
+            let c = k[0]
+            if !n.children.has(c) {
+                n.children[c] = Node { edge: k, children: {}, is_end: true, value: value }
+                self.size += 1; return
+            }
+            let child = n.children[c]
+            let lcp = common_prefix(k, child.edge)
+            if lcp == len(child.edge) {
+                // Full match of child edge; descend.
+                n = child; k = slice(k, lcp, len(k)); continue
+            }
+            // Split child edge at lcp.
+            let shared  = slice(child.edge, 0, lcp)
+            let rest_c  = slice(child.edge, lcp, len(child.edge))
+            let rest_k  = slice(k, lcp, len(k))
+            let moved = Node { edge: rest_c, children: child.children,
+                               is_end: child.is_end, value: child.value }
+            child.edge = shared
+            child.children = {}
+            child.is_end = false; child.value = nil
+            child.children[rest_c[0]] = moved
+            if len(rest_k) == 0 {
+                child.is_end = true; child.value = value
+            } else {
+                child.children[rest_k[0]] = Node {
+                    edge: rest_k, children: {}, is_end: true, value: value
+                }
+            }
+            self.size += 1; return
+        }
+        if !n.is_end { self.size += 1 }
+        n.is_end = true; n.value = value
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn search(self, key: str) -> any {
+        let mut n = self.root; let mut k = key
+        while len(k) > 0 {
+            let c = k[0]
+            if !n.children.has(c) { return nil }
+            let child = n.children[c]
+            if !starts_with_str(k, child.edge) { return nil }
+            k = slice(k, len(child.edge), len(k))
+            n = child
+        }
+        return if n.is_end { n.value } else { nil }
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn starts_with(self, prefix: str) -> bool {
+        let mut n = self.root; let mut k = prefix
+        while len(k) > 0 {
+            let c = k[0]
+            if !n.children.has(c) { return false }
+            let child = n.children[c]
+            let lcp = common_prefix(k, child.edge)
+            if lcp == len(k)          { return true }      // key exhausted within edge
+            if lcp < len(child.edge)  { return false }
+            k = slice(k, lcp, len(k)); n = child
+        }
+        return true
     }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
-fn main() {
-    let ds = RadixTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Radix Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+fn common_prefix(a: str, b: str) -> int {
+    let n = if len(a) < len(b) { len(a) } else { len(b) }
+    let mut i = 0
+    while i < n && a[i] == b[i] { i += 1 }
+    return i
+}
+
+fn starts_with_str(s: str, p: str) -> bool {
+    if len(s) < len(p) { return false }
+    let mut i = 0
+    while i < len(p) { if s[i] != p[i] { return false }; i += 1 }
+    return true
 }
