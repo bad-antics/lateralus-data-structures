@@ -1,41 +1,119 @@
-// Data Structure: Binomial Heap
+// Binomial Heap (Jean Vuillemin, 1978).
+//
+// Collection of BINOMIAL TREES B_k with 2^k nodes each. At most one
+// B_k per heap, so the number of trees for n elements is the number
+// of 1-bits in n (≤ ⌈log₂(n+1)⌉). All ops reduce to MERGE of two
+// heaps, which parallels binary addition: O(log n). Lazy "link" fuses
+// two B_k into one B_{k+1} by making the larger root a child of the
+// smaller (min-heap).
+//
+// Operations:
+//   find_min O(log n),  insert O(log n) amortized O(1),
+//   merge O(log n),  extract_min O(log n),  decrease_key O(log n).
+//
+// Significance: foundation for Fibonacci heaps (which improve
+// decrease_key to O(1) amortized, used in Dijkstra's theoretical
+// bound). Practically often slower than pairing heaps or bucketed
+// structures; the value here is conceptual and worst-case bounds.
+
 module data_structures.binomial_heap
 
-pub struct BinomialHeapNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Tree {
+    pub key: int, pub value: any, pub degree: int,
+    pub child: Tree?, pub sibling: Tree?, pub parent: Tree?,
 }
 
-pub struct BinomialHeap {
-    root: any?
-    size: int
-}
+pub struct BinomialHeap { pub head: Tree?, pub size: int }
 
 impl BinomialHeap {
-    pub fn new() -> BinomialHeap {
-        return BinomialHeap { root: nil, size: 0 }
-    }
+    pub fn new() -> BinomialHeap { return BinomialHeap { head: nil, size: 0 } }
+
     pub fn insert(self, key: int, value: any) {
+        let t = Tree { key: key, value: value, degree: 0,
+                       child: nil, sibling: nil, parent: nil }
+        let h2 = BinomialHeap { head: t, size: 1 }
+        self.head = union(self.head, h2.head)
         self.size += 1
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn find_min(self) -> int {
+        if self.head == nil { throw Error("binomial_heap: empty") }
+        let mut m = self.head; let mut cur = self.head.sibling
+        while cur != nil {
+            if cur.key < m.key { m = cur }
+            cur = cur.sibling
+        }
+        return m.key
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn extract_min(self) -> int {
+        if self.head == nil { throw Error("binomial_heap: empty") }
+        // Find min root.
+        let mut prev_min: Tree? = nil; let mut min_t = self.head
+        let mut prev: Tree? = nil; let mut cur = self.head
+        while cur != nil {
+            if cur.key < min_t.key { min_t = cur; prev_min = prev }
+            prev = cur; cur = cur.sibling
+        }
+        // Remove min_t from root list.
+        if prev_min == nil { self.head = min_t.sibling }
+        else               { prev_min.sibling = min_t.sibling }
+        // Reverse children of min_t to form new heap.
+        let mut new_head: Tree? = nil; let mut c = min_t.child
+        while c != nil {
+            let nxt = c.sibling
+            c.sibling = new_head; c.parent = nil
+            new_head = c; c = nxt
+        }
+        self.head = union(self.head, new_head)
+        self.size -= 1
+        return min_t.key
     }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
-fn main() {
-    let ds = BinomialHeap.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Binomial Heap size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+fn link(y: Tree, z: Tree) {
+    // Make y a child of z (y.key ≥ z.key).
+    y.parent = z
+    y.sibling = z.child
+    z.child = y
+    z.degree += 1
+}
+
+fn merge_roots(a: Tree?, b: Tree?) -> Tree? {
+    // Merge two root lists sorted by degree.
+    if a == nil { return b }
+    if b == nil { return a }
+    let head: Tree; let mut ta = a; let mut tb = b
+    if a.degree <= b.degree { head = a; ta = a.sibling }
+    else                    { head = b; tb = b.sibling }
+    let mut tail = head
+    while ta != nil && tb != nil {
+        if ta.degree <= tb.degree { tail.sibling = ta; tail = ta; ta = ta.sibling }
+        else                       { tail.sibling = tb; tail = tb; tb = tb.sibling }
+    }
+    tail.sibling = if ta != nil { ta } else { tb }
+    return head
+}
+
+fn union(h1: Tree?, h2: Tree?) -> Tree? {
+    let mut head = merge_roots(h1, h2)
+    if head == nil { return nil }
+    let mut prev: Tree? = nil; let mut cur = head; let mut nxt = cur.sibling
+    while nxt != nil {
+        if cur.degree != nxt.degree
+           || (nxt.sibling != nil && nxt.sibling.degree == cur.degree) {
+            prev = cur; cur = nxt
+        } else if cur.key <= nxt.key {
+            cur.sibling = nxt.sibling
+            link(nxt, cur)
+        } else {
+            if prev == nil { head = nxt } else { prev.sibling = nxt }
+            link(cur, nxt)
+            cur = nxt
+        }
+        nxt = cur.sibling
+    }
+    return head
 }
