@@ -1,41 +1,112 @@
-// Data Structure: Segment Tree
+// Segment Tree — range-query workhorse of competitive programming.
+//
+// Given an array of n elements, supports:
+//   • point_update(i, v): O(log n)
+//   • range_query(l, r):  associative aggregate over a[l..=r] in O(log n)
+//
+// With lazy propagation: range updates in O(log n) too. Aggregate
+// must be associative (sum, min, max, gcd, XOR); monoid structure
+// gives identity e required by the empty-range case.
+//
+// Array-backed implementation: tree[1] is root, children of i are
+// 2i and 2i+1. Size = 4n rounded up for safety.
+//
+// Real-world: interval scheduling, 2-D range sums, Mo's algorithm
+// hybrids, offline RMQ, event simulation, K-D range trees (outer
+// dimension segtree + inner dimension segtrees).
+
 module data_structures.segment_tree
 
-pub struct SegmentTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
-}
-
 pub struct SegmentTree {
-    root: any?
-    size: int
+    pub tree: list,
+    pub lazy: list,
+    pub n: int,
+    pub identity: int,
 }
 
 impl SegmentTree {
-    pub fn new() -> SegmentTree {
-        return SegmentTree { root: nil, size: 0 }
+    /// Build a sum-segment tree from `data`.
+    pub fn new_sum(data: list) -> SegmentTree {
+        let n = len(data)
+        let size = 4 * (if n > 0 { n } else { 1 })
+        let mut t = []; let mut i = 0
+        while i < size { t = push(t, 0); i += 1 }
+        let mut lz = []; i = 0
+        while i < size { lz = push(lz, 0); i += 1 }
+        let st = SegmentTree { tree: t, lazy: lz, n: n, identity: 0 }
+        if n > 0 { build(st.tree, data, 1, 0, n - 1) }
+        return st
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn query(self, l: int, r: int) -> int {
+        if l < 0 || r >= self.n || l > r { throw Error("segment_tree: range out of bounds") }
+        return query_rec(self.tree, self.lazy, 1, 0, self.n - 1, l, r)
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn point_update(self, i: int, value: int) {
+        if i < 0 || i >= self.n { throw Error("segment_tree: index out of bounds") }
+        point_update_rec(self.tree, 1, 0, self.n - 1, i, value)
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn range_update(self, l: int, r: int, delta: int) {
+        range_update_rec(self.tree, self.lazy, 1, 0, self.n - 1, l, r, delta)
     }
-    pub fn size_of(self) -> int { return self.size }
+}
+
+fn build(tree: list, data: list, node: int, l: int, r: int) {
+    if l == r { tree[node] = data[l]; return }
+    let mid = (l + r) / 2
+    build(tree, data, 2 * node,     l,       mid)
+    build(tree, data, 2 * node + 1, mid + 1, r)
+    tree[node] = tree[2 * node] + tree[2 * node + 1]
+}
+
+fn push_down(tree: list, lazy: list, node: int, l: int, r: int) {
+    if lazy[node] != 0 {
+        let mid = (l + r) / 2
+        tree[2 * node]     += lazy[node] * (mid - l + 1)
+        tree[2 * node + 1] += lazy[node] * (r - mid)
+        lazy[2 * node]     += lazy[node]
+        lazy[2 * node + 1] += lazy[node]
+        lazy[node] = 0
+    }
+}
+
+fn query_rec(tree: list, lazy: list, node: int, l: int, r: int, ql: int, qr: int) -> int {
+    if qr < l || r < ql { return 0 }
+    if ql <= l && r <= qr { return tree[node] }
+    push_down(tree, lazy, node, l, r)
+    let mid = (l + r) / 2
+    return query_rec(tree, lazy, 2 * node,     l,       mid, ql, qr)
+         + query_rec(tree, lazy, 2 * node + 1, mid + 1, r,   ql, qr)
+}
+
+fn point_update_rec(tree: list, node: int, l: int, r: int, i: int, v: int) {
+    if l == r { tree[node] = v; return }
+    let mid = (l + r) / 2
+    if i <= mid { point_update_rec(tree, 2 * node,     l,       mid, i, v) }
+    else        { point_update_rec(tree, 2 * node + 1, mid + 1, r,   i, v) }
+    tree[node] = tree[2 * node] + tree[2 * node + 1]
+}
+
+fn range_update_rec(tree: list, lazy: list, node: int, l: int, r: int,
+                    ul: int, ur: int, delta: int) {
+    if ur < l || r < ul { return }
+    if ul <= l && r <= ur {
+        tree[node] += delta * (r - l + 1)
+        lazy[node] += delta
+        return
+    }
+    push_down(tree, lazy, node, l, r)
+    let mid = (l + r) / 2
+    range_update_rec(tree, lazy, 2 * node,     l,       mid, ul, ur, delta)
+    range_update_rec(tree, lazy, 2 * node + 1, mid + 1, r,   ul, ur, delta)
+    tree[node] = tree[2 * node] + tree[2 * node + 1]
 }
 
 fn main() {
-    let ds = SegmentTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Segment Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let st = SegmentTree.new_sum([1, 3, 5, 7, 9, 11])
+    println("sum[1..3] = " + st.query(1, 3) as str)   // 15
+    st.range_update(1, 4, 10)
+    println("sum[1..3] = " + st.query(1, 3) as str)   // 45
 }
