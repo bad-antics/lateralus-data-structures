@@ -1,41 +1,122 @@
-// Data Structure: Interval Tree
+// Interval Tree — augmented BST for stabbing and overlap queries.
+//
+// Stores a collection of closed intervals [lo, hi]. Augment each BST
+// node (keyed on `lo`) with max = max(hi) over the whole subtree.
+// Stabbing / overlap query then prunes with that max:
+//
+//   search_overlap(n, q):
+//     if n is nil: return nil
+//     if q overlaps n.interval: return n
+//     if n.left != nil and n.left.max >= q.lo:
+//         return search_overlap(n.left, q)
+//     return search_overlap(n.right, q)
+//
+// O(log n + k) for k results. Under the hood any self-balancing BST
+// works; we layer onto a simple height-balanced (AVL-style) tree.
+//
+// Applications: genomic feature overlap (IRanges, BEDtools), calendar
+// conflict detection, network IP-range lookup, CAD collision tests,
+// database range indexes (PostgreSQL SP-GiST).
+
 module data_structures.interval_tree
 
-pub struct IntervalTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Interval { pub lo: int, pub hi: int, pub data: any }
+
+pub struct Node {
+    pub iv: Interval, pub max: int, pub height: int,
+    pub left: Node?, pub right: Node?,
 }
 
-pub struct IntervalTree {
-    root: any?
-    size: int
-}
+pub struct IntervalTree { pub root: Node?, pub size: int }
 
 impl IntervalTree {
-    pub fn new() -> IntervalTree {
-        return IntervalTree { root: nil, size: 0 }
-    }
-    pub fn insert(self, key: int, value: any) {
+    pub fn new() -> IntervalTree { return IntervalTree { root: nil, size: 0 } }
+
+    pub fn insert(self, iv: Interval) {
+        self.root = insert_node(self.root, iv)
         self.size += 1
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    /// Return ONE interval overlapping `q`, or nil.
+    pub fn search_overlap(self, q: Interval) -> Interval? {
+        return find_overlap(self.root, q)
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    /// Return ALL intervals overlapping `q`.
+    pub fn search_all(self, q: Interval) -> list {
+        let mut out = []
+        collect_all(self.root, q, out)
+        return out
     }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
+fn overlaps(a: Interval, b: Interval) -> bool {
+    return a.lo <= b.hi && b.lo <= a.hi
+}
+
+fn h(n: Node?) -> int { return if n == nil { 0 } else { n.height } }
+
+fn update(n: Node) {
+    let lh = h(n.left); let rh = h(n.right)
+    n.height = 1 + (if lh > rh { lh } else { rh })
+    let mut m = n.iv.hi
+    if n.left  != nil && n.left.max  > m { m = n.left.max }
+    if n.right != nil && n.right.max > m { m = n.right.max }
+    n.max = m
+}
+
+fn rotate_right(y: Node) -> Node {
+    let x = y.left; let t2 = x.right
+    x.right = y; y.left = t2
+    update(y); update(x); return x
+}
+
+fn rotate_left(x: Node) -> Node {
+    let y = x.right; let t2 = y.left
+    y.left = x; x.right = t2
+    update(x); update(y); return y
+}
+
+fn insert_node(n: Node?, iv: Interval) -> Node {
+    if n == nil {
+        return Node { iv: iv, max: iv.hi, height: 1, left: nil, right: nil }
+    }
+    if iv.lo < n.iv.lo { n.left = insert_node(n.left, iv) }
+    else                { n.right = insert_node(n.right, iv) }
+    update(n)
+    let bf = h(n.left) - h(n.right)
+    if bf > 1 && iv.lo < n.left.iv.lo   { return rotate_right(n) }
+    if bf < -1 && iv.lo >= n.right.iv.lo { return rotate_left(n) }
+    if bf > 1 && iv.lo >= n.left.iv.lo  { n.left = rotate_left(n.left);   return rotate_right(n) }
+    if bf < -1 && iv.lo < n.right.iv.lo { n.right = rotate_right(n.right); return rotate_left(n) }
+    return n
+}
+
+fn find_overlap(n: Node?, q: Interval) -> Interval? {
+    if n == nil { return nil }
+    if overlaps(n.iv, q) { return n.iv }
+    if n.left != nil && n.left.max >= q.lo {
+        return find_overlap(n.left, q)
+    }
+    return find_overlap(n.right, q)
+}
+
+fn collect_all(n: Node?, q: Interval, out: list) {
+    if n == nil { return }
+    if n.max < q.lo { return }   // prune: nothing here reaches q
+    collect_all(n.left, q, out)
+    if overlaps(n.iv, q) { out = push(out, n.iv) }
+    if q.hi < n.iv.lo { return } // prune: right subtree too far right
+    collect_all(n.right, q, out)
+}
+
 fn main() {
-    let ds = IntervalTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Interval Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let t = IntervalTree.new()
+    for (lo, hi) in [(15, 20), (10, 30), (17, 19), (5, 20), (12, 15), (30, 40)] {
+        t.insert(Interval { lo: lo, hi: hi, data: nil })
+    }
+    let hit = t.search_overlap(Interval { lo: 14, hi: 16, data: nil })
+    if hit != nil { println("overlap: [" + hit.lo as str + "," + hit.hi as str + "]") }
 }
