@@ -1,41 +1,130 @@
-// Data Structure: Rope (String)
+// Rope (Boehm, Atkinson & Plass, 1995) — immutable string as a tree.
+//
+// A rope stores long strings as a binary tree whose leaves are small
+// flat fragments. Each internal node caches the TOTAL WEIGHT (number
+// of characters) of its left subtree, so indexing, split, and concat
+// are all O(log n). Compare with naïve string concatenation (O(n)
+// per concat) or arrays of characters (O(n) for inserts).
+//
+// Used by:
+//   • SGI STL rope class
+//   • Xi editor, Lapce (Rust xi-rope crate)
+//   • VS Code's piece-table-with-rope buffer
+//   • Emacs gap-buffer alternative in concept (xi literally uses rope)
+//   • Mozilla's SpiderMonkey long-string concatenation
+//
+// Trade-off: constants are higher than plain strings; worth it above
+// ~1 MB text or high edit frequency. Balance via Fibonacci rule or
+// explicit rotation after many splits/concats.
+
 module data_structures.rope
 
-pub struct RopeStringNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub is_leaf: bool,
+    pub text: str,          // valid if is_leaf
+    pub left: Node?,        // internal only
+    pub right: Node?,
+    pub weight: int,        // left-subtree length (or own length for leaf)
+    pub length: int,        // total chars under this subtree
 }
 
-pub struct RopeString {
-    root: any?
-    size: int
+pub const LEAF_MAX: int = 8
+
+pub struct Rope { pub root: Node? }
+
+impl Rope {
+    pub fn new() -> Rope { return Rope { root: nil } }
+
+    pub fn from_str(s: str) -> Rope { return Rope { root: build(s) } }
+
+    pub fn length(self) -> int {
+        return if self.root == nil { 0 } else { self.root.length }
+    }
+
+    pub fn char_at(self, i: int) -> str {
+        if self.root == nil || i < 0 || i >= self.root.length {
+            throw Error("rope: index out of bounds")
+        }
+        return index_rec(self.root, i)
+    }
+
+    pub fn concat(a: Rope, b: Rope) -> Rope {
+        if a.root == nil { return b }
+        if b.root == nil { return a }
+        return Rope { root: make_internal(a.root, b.root) }
+    }
+
+    /// Split at position `i` into (left, right) ropes.
+    pub fn split(self, i: int) -> (Rope, Rope) {
+        if self.root == nil { return (Rope.new(), Rope.new()) }
+        let (l, r) = split_node(self.root, i)
+        return (Rope { root: l }, Rope { root: r })
+    }
+
+    pub fn insert(self, i: int, s: str) -> Rope {
+        let (l, r) = self.split(i)
+        return Rope.concat(Rope.concat(l, Rope.from_str(s)), r)
+    }
+
+    pub fn substring(self, start: int, end: int) -> str {
+        let (_, right) = self.split(start)
+        let (mid, _)   = right.split(end - start)
+        return to_str(mid.root)
+    }
+
+    pub fn to_string(self) -> str { return to_str(self.root) }
 }
 
-impl RopeString {
-    pub fn new() -> RopeString {
-        return RopeString { root: nil, size: 0 }
+fn build(s: str) -> Node? {
+    if len(s) == 0 { return nil }
+    if len(s) <= LEAF_MAX {
+        return Node { is_leaf: true, text: s, left: nil, right: nil,
+                      weight: len(s), length: len(s) }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
-    }
-    pub fn search(self, key: int) -> any {
-        return nil
-    }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
-    }
-    pub fn size_of(self) -> int { return self.size }
+    let mid = len(s) / 2
+    let l = build(slice(s, 0, mid))
+    let r = build(slice(s, mid, len(s)))
+    return make_internal(l, r)
 }
 
-fn main() {
-    let ds = RopeString.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Rope (String) size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+fn make_internal(l: Node?, r: Node?) -> Node {
+    let ll = if l == nil { 0 } else { l.length }
+    let rl = if r == nil { 0 } else { r.length }
+    return Node { is_leaf: false, text: "", left: l, right: r,
+                  weight: ll, length: ll + rl }
+}
+
+fn index_rec(n: Node, i: int) -> str {
+    if n.is_leaf { return n.text[i] }
+    if i < n.weight { return index_rec(n.left, i) }
+    return index_rec(n.right, i - n.weight)
+}
+
+fn split_node(n: Node, i: int) -> (Node?, Node?) {
+    if n.is_leaf {
+        if i == 0             { return (nil, n) }
+        if i >= len(n.text)   { return (n, nil) }
+        return (
+            Node { is_leaf: true, text: slice(n.text, 0, i),
+                   left: nil, right: nil, weight: i, length: i },
+            Node { is_leaf: true, text: slice(n.text, i, len(n.text)),
+                   left: nil, right: nil,
+                   weight: len(n.text) - i, length: len(n.text) - i },
+        )
+    }
+    if i < n.weight {
+        let (la, lb) = split_node(n.left, i)
+        return (la, make_internal(lb, n.right))
+    }
+    if i > n.weight {
+        let (ra, rb) = split_node(n.right, i - n.weight)
+        return (make_internal(n.left, ra), rb)
+    }
+    return (n.left, n.right)
+}
+
+fn to_str(n: Node?) -> str {
+    if n == nil { return "" }
+    if n.is_leaf { return n.text }
+    return to_str(n.left) + to_str(n.right)
 }
