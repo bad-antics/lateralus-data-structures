@@ -1,41 +1,107 @@
-// Data Structure: Ternary Search Tree
+// Ternary Search Tree (Bentley & Sedgewick, 1997).
+//
+// Hybrid of binary search tree and trie. Each node stores a single
+// character `c` and three children: left (chars < c), equal (next
+// character of the same key), right (chars > c). Uses less memory
+// than an array-of-children trie when the alphabet is large (full
+// Unicode, say) and supports O(log σ + m) lookup on average.
+//
+// Great fit for:
+//   • Autocomplete suggestions with prefix + partial-match queries
+//     (regex `.` wildcards).
+//   • Spell-check with near-miss / edit-distance-1 candidates.
+//   • Command-line completion in shells and REPLs.
+//   • Near-neighbor string retrieval.
+
 module data_structures.ternary_search_tree
 
-pub struct TernarySearchTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub ch: str,
+    pub is_end: bool, pub value: any,
+    pub left: Node?, pub eq: Node?, pub right: Node?,
 }
 
-pub struct TernarySearchTree {
-    root: any?
-    size: int
-}
+pub struct TST { pub root: Node?, pub size: int }
 
-impl TernarySearchTree {
-    pub fn new() -> TernarySearchTree {
-        return TernarySearchTree { root: nil, size: 0 }
+impl TST {
+    pub fn new() -> TST { return TST { root: nil, size: 0 } }
+
+    pub fn insert(self, key: str, value: any) {
+        if len(key) == 0 { throw Error("TST: empty key") }
+        let (new_root, inserted) = insert_rec(self.root, key, 0, value)
+        self.root = new_root
+        if inserted { self.size += 1 }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn search(self, key: str) -> any {
+        let n = search_rec(self.root, key, 0)
+        if n == nil || !n.is_end { return nil }
+        return n.value
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    /// Wildcard search — '.' matches any single char.
+    pub fn match_pattern(self, pattern: str) -> list {
+        let mut out = []
+        match_rec(self.root, pattern, 0, "", out)
+        return out
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    /// All keys with the given prefix.
+    pub fn keys_with_prefix(self, prefix: str) -> list {
+        let mut out = []
+        let n = search_rec(self.root, prefix, 0)
+        if n == nil { return out }
+        if n.is_end { out = push(out, prefix) }
+        if n.eq != nil { collect(n.eq, prefix, out) }
+        return out
     }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
-fn main() {
-    let ds = TernarySearchTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Ternary Search Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+fn insert_rec(n: Node?, key: str, d: int, value: any) -> (Node, bool) {
+    let c = key[d]
+    let node = if n == nil {
+        Node { ch: c, is_end: false, value: nil, left: nil, eq: nil, right: nil }
+    } else { n }
+    let mut inserted = false
+    if c < node.ch {
+        let (l, ins) = insert_rec(node.left, key, d, value); node.left = l; inserted = ins
+    } else if c > node.ch {
+        let (r, ins) = insert_rec(node.right, key, d, value); node.right = r; inserted = ins
+    } else if d + 1 < len(key) {
+        let (e, ins) = insert_rec(node.eq, key, d + 1, value); node.eq = e; inserted = ins
+    } else {
+        if !node.is_end { inserted = true }
+        node.is_end = true; node.value = value
+    }
+    return (node, inserted)
+}
+
+fn search_rec(n: Node?, key: str, d: int) -> Node? {
+    if n == nil { return nil }
+    let c = key[d]
+    if c < n.ch       { return search_rec(n.left, key, d) }
+    if c > n.ch       { return search_rec(n.right, key, d) }
+    if d + 1 == len(key) { return n }
+    return search_rec(n.eq, key, d + 1)
+}
+
+fn match_rec(n: Node?, pat: str, d: int, prefix: str, out: list) {
+    if n == nil { return }
+    let c = pat[d]
+    if c == "." || c < n.ch { match_rec(n.left, pat, d, prefix, out) }
+    if c == "." || c == n.ch {
+        if d + 1 == len(pat) && n.is_end { out = push(out, prefix + n.ch) }
+        if d + 1 < len(pat) { match_rec(n.eq, pat, d + 1, prefix + n.ch, out) }
+    }
+    if c == "." || c > n.ch { match_rec(n.right, pat, d, prefix, out) }
+}
+
+fn collect(n: Node?, prefix: str, out: list) {
+    if n == nil { return }
+    collect(n.left, prefix, out)
+    if n.is_end { out = push(out, prefix + n.ch) }
+    collect(n.eq, prefix + n.ch, out)
+    collect(n.right, prefix, out)
 }
