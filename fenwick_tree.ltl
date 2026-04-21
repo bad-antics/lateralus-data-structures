@@ -1,41 +1,89 @@
-// Data Structure: Fenwick Tree (BIT)
+// Fenwick / Binary Indexed Tree (Peter Fenwick, 1994).
+//
+// Like a segment tree, but uses clever binary-index arithmetic to
+// store prefix sums in a single flat array. Half the memory, tighter
+// inner loops, simpler to implement. The trick: each index i covers
+// a range determined by its lowest-set-bit: i & -i.
+//
+//   update(i, δ): while i ≤ n: a[i] += δ; i += i & -i
+//   prefix(i):    while i >  0: sum += a[i]; i -= i & -i
+//
+// Gives O(log n) update and O(log n) prefix query. Range-sum =
+// prefix(r) − prefix(l-1). Tricks for range-update + point-query
+// (difference-array) and range-update + range-query (two BITs).
+//
+// Used in: counting inversions (merge-sort alternative), 2-D BITs
+// for rectangle sums, order-statistics (rank queries), many online
+// judge solutions, segment-tree-beats prerequisite.
+
 module data_structures.fenwick_tree
 
-pub struct FenwickTreeBITNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
-}
+pub struct FenwickTree { pub tree: list, pub n: int }
 
-pub struct FenwickTreeBIT {
-    root: any?
-    size: int
-}
+impl FenwickTree {
+    pub fn new(n: int) -> FenwickTree {
+        let mut t = []; let mut i = 0
+        while i <= n { t = push(t, 0); i += 1 }
+        return FenwickTree { tree: t, n: n }
+    }
 
-impl FenwickTreeBIT {
-    pub fn new() -> FenwickTreeBIT {
-        return FenwickTreeBIT { root: nil, size: 0 }
+    /// Build from array in O(n).
+    pub fn from_array(data: list) -> FenwickTree {
+        let f = FenwickTree.new(len(data))
+        let mut i = 1
+        while i <= f.n {
+            f.tree[i] += data[i - 1]
+            let j = i + (i & (-i))
+            if j <= f.n { f.tree[j] += f.tree[i] }
+            i += 1
+        }
+        return f
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn update(self, i: int, delta: int) {
+        if i < 1 || i > self.n { throw Error("fenwick: 1-based index out of range") }
+        let mut k = i
+        while k <= self.n {
+            self.tree[k] += delta
+            k += k & (-k)
+        }
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn prefix(self, i: int) -> int {
+        if i < 0 || i > self.n { throw Error("fenwick: prefix index out of range") }
+        let mut s = 0; let mut k = i
+        while k > 0 {
+            s += self.tree[k]
+            k -= k & (-k)
+        }
+        return s
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn range(self, l: int, r: int) -> int {
+        if l > r { return 0 }
+        return self.prefix(r) - self.prefix(l - 1)
     }
-    pub fn size_of(self) -> int { return self.size }
+
+    /// Find smallest i with prefix(i) >= target — O(log n). Works only
+    /// when all updates are non-negative.
+    pub fn lower_bound(self, target: int) -> int {
+        let mut k = 1
+        while k * 2 <= self.n { k = k * 2 }
+        let mut pos = 0; let mut t = target
+        while k > 0 {
+            if pos + k <= self.n && self.tree[pos + k] < t {
+                pos += k; t -= self.tree[pos]
+            }
+            k = k / 2
+        }
+        return pos + 1
+    }
 }
 
 fn main() {
-    let ds = FenwickTreeBIT.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Fenwick Tree (BIT) size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let f = FenwickTree.from_array([2, 1, 4, 5, 3, 7, 8])
+    println("prefix(4)=" + f.prefix(4) as str)   // 12
+    println("range(3,6)=" + f.range(3, 6) as str) // 4+5+3+7 = 19
+    f.update(3, 10)
+    println("range(3,6)=" + f.range(3, 6) as str) // 29
 }
