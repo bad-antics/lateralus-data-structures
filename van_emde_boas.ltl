@@ -1,41 +1,98 @@
-// Data Structure: Van Emde Boas Tree
+// van Emde Boas Tree (van Emde Boas, 1977).
+//
+// An ordered set over the universe {0..U-1} with O(log log U) time
+// for insert, delete, member, predecessor, successor — strictly
+// faster than any comparison-based BST on integer keys. The trick is
+// recursive divide-by-√U: store high bits in a summary and low bits
+// in clusters, sharing the same recursive vEB structure.
+//
+// Memory is O(U) naïvely — huge for 64-bit keys — but can be reduced
+// to O(n log log U) via y-fast tries (Willard 1983) or hash-based
+// clusters (van Emde Boas + HashMap). For smaller universes (≤ 2²⁰)
+// the plain structure is blistering fast and fits in L2 cache.
+//
+// Used in: integer priority queues inside SSSP on dense graphs
+// (Thorup 2004), network routing tables when the IP-prefix universe
+// is bounded, OS timer wheels (4.4BSD callout heap), some dynamic
+// connectivity algorithms.
+
 module data_structures.van_emde_boas
 
-pub struct VanEmdeBoasTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct VEB {
+    pub u: int,              // universe size (power of 2)
+    pub min: int,            // -1 if empty
+    pub max: int,
+    pub summary: VEB?,
+    pub clusters: list,      // list of VEB? of size upper_sqrt(u)
+    pub cluster_sqrt: int,   // size of each cluster = lower_sqrt(u)
+    pub summary_sqrt: int,   // number of clusters = upper_sqrt(u)
 }
 
-pub struct VanEmdeBoasTree {
-    root: any?
-    size: int
+impl VEB {
+    pub fn new(u: int) -> VEB {
+        let (us, cs) = sqrts(u)
+        let mut clusters = []; let mut i = 0
+        while i < us { clusters = push(clusters, nil); i += 1 }
+        return VEB { u: u, min: -1, max: -1, summary: nil,
+                     clusters: clusters, cluster_sqrt: cs, summary_sqrt: us }
+    }
+
+    pub fn is_empty(self) -> bool { return self.min == -1 }
+
+    pub fn member(self, x: int) -> bool {
+        if x == self.min || x == self.max { return true }
+        if self.u == 2 { return false }
+        let c = self.clusters[high(self, x)]
+        return c != nil && c.member(low(self, x))
+    }
+
+    pub fn insert(self, x: int) {
+        if self.min == -1 {
+            self.min = x; self.max = x; return
+        }
+        let mut v = x
+        if v < self.min {
+            let t = v; v = self.min; self.min = t
+        }
+        if self.u > 2 {
+            let h = high(self, v); let l = low(self, v)
+            if self.clusters[h] == nil {
+                self.clusters[h] = VEB.new(self.cluster_sqrt)
+                if self.summary == nil { self.summary = VEB.new(self.summary_sqrt) }
+                self.summary.insert(h)
+            }
+            self.clusters[h].insert(l)
+        }
+        if v > self.max { self.max = v }
+    }
+
+    pub fn successor(self, x: int) -> int {
+        if self.u == 2 {
+            if x == 0 && self.max == 1 { return 1 }
+            return -1
+        }
+        if self.min != -1 && x < self.min { return self.min }
+        let h = high(self, x); let l = low(self, x)
+        let c = self.clusters[h]
+        if c != nil && c.max != -1 && l < c.max {
+            return index(self, h, c.successor(l))
+        }
+        if self.summary == nil { return -1 }
+        let succ_cluster = self.summary.successor(h)
+        if succ_cluster == -1 { return -1 }
+        return index(self, succ_cluster, self.clusters[succ_cluster].min)
+    }
 }
 
-impl VanEmdeBoasTree {
-    pub fn new() -> VanEmdeBoasTree {
-        return VanEmdeBoasTree { root: nil, size: 0 }
-    }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
-    }
-    pub fn search(self, key: int) -> any {
-        return nil
-    }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
-    }
-    pub fn size_of(self) -> int { return self.size }
-}
+fn high(t: VEB, x: int) -> int { return x / t.cluster_sqrt }
+fn low (t: VEB, x: int) -> int { return x % t.cluster_sqrt }
+fn index(t: VEB, h: int, l: int) -> int { return h * t.cluster_sqrt + l }
 
-fn main() {
-    let ds = VanEmdeBoasTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Van Emde Boas Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+fn sqrts(u: int) -> (int, int) {
+    // upper_sqrt(u) = 2^⌈(log₂u)/2⌉, lower_sqrt(u) = 2^⌊(log₂u)/2⌋.
+    let mut log = 0; let mut v = u
+    while v > 1 { v = v / 2; log += 1 }
+    let lo = 1 << (log / 2)
+    let hi = 1 << ((log + 1) / 2)
+    return (hi, lo)
 }
