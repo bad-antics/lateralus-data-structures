@@ -1,41 +1,124 @@
-// Data Structure: Skip List
+// Skip List (William Pugh, 1990) — randomized replacement for BSTs.
+//
+// A linked list with multiple forward-pointer "lanes" at different
+// levels. Level of a newly-inserted node is picked geometrically:
+// P(level ≥ k) = p^k with p = 1/2 by default. Expected O(log n)
+// search, insert, delete with MUCH simpler code than balanced BSTs —
+// no rotations, no parent pointers, no color metadata.
+//
+// Used by: Redis sorted sets (ZSET), LevelDB/RocksDB memtables,
+// Java's ConcurrentSkipListMap (lock-free version), MemSQL, Cassandra
+// memtable (historical), Google's LevelDB-derived storage layers.
+// Concurrent variants (Fraser-Harris 2007) scale better than
+// lock-protected trees.
+
 module data_structures.skip_list
 
-pub struct SkipListNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub const MAX_LEVEL: int = 16
+pub const P_NUM: int = 1
+pub const P_DEN: int = 2
+
+pub struct Node {
+    pub key: int, pub value: any,
+    pub forward: list,    // length = level+1, pointers to Node?
 }
 
-pub struct SkipList {
-    root: any?
-    size: int
-}
+pub struct SkipList { pub head: Node, pub level: int, pub size: int, pub rng: int }
 
 impl SkipList {
-    pub fn new() -> SkipList {
-        return SkipList { root: nil, size: 0 }
+    pub fn new(seed: int) -> SkipList {
+        let head = Node { key: -2147483648, value: nil, forward: nil_list(MAX_LEVEL + 1) }
+        return SkipList { head: head, level: 0, size: 0,
+                          rng: if seed == 0 { 1 } else { seed } }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
-    }
+
     pub fn search(self, key: int) -> any {
+        let mut x = self.head
+        let mut i = self.level
+        while i >= 0 {
+            while x.forward[i] != nil && x.forward[i].key < key { x = x.forward[i] }
+            i -= 1
+        }
+        let y = x.forward[0]
+        if y != nil && y.key == key { return y.value }
         return nil
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn insert(self, key: int, value: any) {
+        let mut update = nil_list(MAX_LEVEL + 1)
+        let mut x = self.head
+        let mut i = self.level
+        while i >= 0 {
+            while x.forward[i] != nil && x.forward[i].key < key { x = x.forward[i] }
+            update[i] = x
+            i -= 1
+        }
+        let y = x.forward[0]
+        if y != nil && y.key == key { y.value = value; return }
+        let lvl = self.random_level()
+        if lvl > self.level {
+            let mut j = self.level + 1
+            while j <= lvl { update[j] = self.head; j += 1 }
+            self.level = lvl
+        }
+        let n = Node { key: key, value: value, forward: nil_list(lvl + 1) }
+        let mut k = 0
+        while k <= lvl {
+            n.forward[k] = update[k].forward[k]
+            update[k].forward[k] = n
+            k += 1
+        }
+        self.size += 1
     }
+
+    pub fn delete(self, key: int) -> bool {
+        let mut update = nil_list(MAX_LEVEL + 1)
+        let mut x = self.head
+        let mut i = self.level
+        while i >= 0 {
+            while x.forward[i] != nil && x.forward[i].key < key { x = x.forward[i] }
+            update[i] = x
+            i -= 1
+        }
+        let y = x.forward[0]
+        if y == nil || y.key != key { return false }
+        let mut k = 0
+        while k <= self.level && update[k].forward[k] == y {
+            update[k].forward[k] = y.forward[k]; k += 1
+        }
+        while self.level > 0 && self.head.forward[self.level] == nil {
+            self.level -= 1
+        }
+        self.size -= 1
+        return true
+    }
+
+    fn random_level(self) -> int {
+        let mut lvl = 0
+        while lvl < MAX_LEVEL {
+            // Xorshift
+            let mut x = self.rng
+            x = x ^ (x << 13); x = x ^ (x >> 17); x = x ^ (x << 5)
+            x = x & 0x7FFFFFFF
+            self.rng = x
+            if (x % P_DEN) >= P_NUM { break }
+            lvl += 1
+        }
+        return lvl
+    }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
+fn nil_list(n: int) -> list {
+    let mut v = []; let mut i = 0
+    while i < n { v = push(v, nil); i += 1 }
+    return v
+}
+
 fn main() {
-    let ds = SkipList.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Skip List size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let s = SkipList.new(42)
+    for k in [3, 6, 7, 9, 12, 19, 17, 26, 21, 25] { s.insert(k, k * 10) }
+    println("search 19 -> " + s.search(19) as str)   // 190
+    println("size=" + s.size_of() as str)
 }
