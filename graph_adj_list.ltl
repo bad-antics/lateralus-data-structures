@@ -1,41 +1,94 @@
-// Data Structure: Graph (Adjacency List)
+// Graph with adjacency-list representation — space O(V+E),
+// excellent for sparse graphs (E = O(V)).
+//
+// Trade-offs vs adjacency matrix:
+//   • O(V+E) memory vs O(V²) — crucial for planar/social graphs.
+//   • O(degree) neighbour lookup vs O(V).
+//   • O(1) amortized edge insertion.
+//   • edge-exists query is O(degree) not O(1) — use a HashMap of
+//     edges alongside the list if that matters.
+//
+// Traversals included:
+//   • BFS — shortest path in unweighted graphs, level-order, bipartite
+//     testing.
+//   • DFS — topological sort, cycle detection, SCC (Tarjan/Kosaraju),
+//     bridge-and-articulation (Tarjan).
+
 module data_structures.graph_adj_list
 
-pub struct GraphAdjacencyListNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Edge { pub to: int, pub weight: int }
+
+pub struct Graph {
+    pub adj: list,         // list of lists of Edge
+    pub n: int,
+    pub directed: bool,
 }
 
-pub struct GraphAdjacencyList {
-    root: any?
-    size: int
-}
+impl Graph {
+    pub fn new(n: int, directed: bool) -> Graph {
+        let mut a = []; let mut i = 0
+        while i < n { a = push(a, []); i += 1 }
+        return Graph { adj: a, n: n, directed: directed }
+    }
 
-impl GraphAdjacencyList {
-    pub fn new() -> GraphAdjacencyList {
-        return GraphAdjacencyList { root: nil, size: 0 }
+    pub fn add_edge(self, u: int, v: int, w: int) {
+        self.adj[u] = push(self.adj[u], Edge { to: v, weight: w })
+        if !self.directed { self.adj[v] = push(self.adj[v], Edge { to: u, weight: w }) }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
-    }
-    pub fn search(self, key: int) -> any {
-        return nil
-    }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
-    }
-    pub fn size_of(self) -> int { return self.size }
-}
 
-fn main() {
-    let ds = GraphAdjacencyList.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Graph (Adjacency List) size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    pub fn bfs(self, src: int) -> list {
+        let mut dist = []; let mut i = 0
+        while i < self.n { dist = push(dist, -1); i += 1 }
+        dist[src] = 0
+        let mut q = [src]; let mut head = 0
+        while head < len(q) {
+            let u = q[head]; head += 1
+            for e in self.adj[u] {
+                if dist[e.to] == -1 {
+                    dist[e.to] = dist[u] + 1
+                    q = push(q, e.to)
+                }
+            }
+        }
+        return dist
+    }
+
+    /// Kahn's algorithm topological sort. Returns empty list if cycle.
+    pub fn topo_sort(self) -> list {
+        let mut indeg = []; let mut i = 0
+        while i < self.n { indeg = push(indeg, 0); i += 1 }
+        for u in 0..self.n { for e in self.adj[u] { indeg[e.to] += 1 } }
+        let mut q = []
+        for u in 0..self.n { if indeg[u] == 0 { q = push(q, u) } }
+        let mut head = 0; let mut order = []
+        while head < len(q) {
+            let u = q[head]; head += 1; order = push(order, u)
+            for e in self.adj[u] {
+                indeg[e.to] -= 1
+                if indeg[e.to] == 0 { q = push(q, e.to) }
+            }
+        }
+        return if len(order) == self.n { order } else { [] }
+    }
+
+    /// Dijkstra's algorithm (non-negative weights). O((V+E) log V).
+    pub fn dijkstra(self, src: int) -> list {
+        use data_structures.priority_queue
+        let mut dist = []; let mut i = 0
+        while i < self.n { dist = push(dist, 2147483647); i += 1 }
+        dist[src] = 0
+        let pq = priority_queue.PriorityQueue.new()
+        pq.push(0, src)
+        while !pq.is_empty() {
+            let u = pq.pop()
+            for e in self.adj[u] {
+                let nd = dist[u] + e.weight
+                if nd < dist[e.to] {
+                    dist[e.to] = nd
+                    pq.push(nd, e.to)
+                }
+            }
+        }
+        return dist
+    }
 }
