@@ -1,41 +1,94 @@
-// Data Structure: Quad Tree
+// Quadtree — 2-D recursive space subdivision (Finkel & Bentley, 1974).
+//
+// Each internal node represents an axis-aligned rectangle and has four
+// children (NW, NE, SW, SE) covering the four quadrants. Leaves hold
+// up to `capacity` points; on overflow the leaf subdivides.
+//
+// Region quadtrees store raster data (one color per cell) and underpin
+// image-compression formats. PR (point-region) quadtrees, implemented
+// here, index 2-D points for range + nearest-neighbor queries.
+//
+// Real-world: Google Maps / OpenStreetMap tiles, Barnes-Hut N-body
+// simulation (O(n log n) gravity), collision detection in 2-D games,
+// raster-to-vector conversion, GIS R-tree alternative.
+
 module data_structures.quad_tree
 
-pub struct QuadTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Rect { pub x: int, pub y: int, pub w: int, pub h: int }
+pub struct Point { pub x: int, pub y: int, pub data: any }
+
+pub struct Quadtree {
+    pub bounds: Rect,
+    pub capacity: int,
+    pub points: list,
+    pub divided: bool,
+    pub nw: Quadtree?, pub ne: Quadtree?, pub sw: Quadtree?, pub se: Quadtree?,
 }
 
-pub struct QuadTree {
-    root: any?
-    size: int
+impl Quadtree {
+    pub fn new(bounds: Rect, capacity: int) -> Quadtree {
+        if capacity < 1 { throw Error("quadtree capacity must be ≥ 1") }
+        return Quadtree {
+            bounds: bounds, capacity: capacity, points: [],
+            divided: false, nw: nil, ne: nil, sw: nil, se: nil,
+        }
+    }
+
+    pub fn insert(self, p: Point) -> bool {
+        if !contains_point(self.bounds, p) { return false }
+        if !self.divided && len(self.points) < self.capacity {
+            self.points = push(self.points, p); return true
+        }
+        if !self.divided { self.subdivide() }
+        return self.nw.insert(p) || self.ne.insert(p)
+            || self.sw.insert(p) || self.se.insert(p)
+    }
+
+    fn subdivide(self) {
+        let b = self.bounds; let hw = b.w / 2; let hh = b.h / 2
+        self.nw = Quadtree.new(Rect { x: b.x,      y: b.y,      w: hw, h: hh }, self.capacity)
+        self.ne = Quadtree.new(Rect { x: b.x + hw, y: b.y,      w: b.w - hw, h: hh }, self.capacity)
+        self.sw = Quadtree.new(Rect { x: b.x,      y: b.y + hh, w: hw, h: b.h - hh }, self.capacity)
+        self.se = Quadtree.new(Rect { x: b.x + hw, y: b.y + hh, w: b.w - hw, h: b.h - hh }, self.capacity)
+        self.divided = true
+        // Redistribute existing points to children.
+        for p in self.points {
+            let _ = self.nw.insert(p) || self.ne.insert(p)
+                 || self.sw.insert(p) || self.se.insert(p)
+        }
+        self.points = []
+    }
+
+    pub fn query_range(self, range: Rect) -> list {
+        let mut out = []
+        if !rects_intersect(self.bounds, range) { return out }
+        for p in self.points {
+            if contains_point(range, p) { out = push(out, p) }
+        }
+        if self.divided {
+            out = out + self.nw.query_range(range)
+            out = out + self.ne.query_range(range)
+            out = out + self.sw.query_range(range)
+            out = out + self.se.query_range(range)
+        }
+        return out
+    }
 }
 
-impl QuadTree {
-    pub fn new() -> QuadTree {
-        return QuadTree { root: nil, size: 0 }
-    }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
-    }
-    pub fn search(self, key: int) -> any {
-        return nil
-    }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
-    }
-    pub fn size_of(self) -> int { return self.size }
+fn contains_point(r: Rect, p: Point) -> bool {
+    return p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h
+}
+
+fn rects_intersect(a: Rect, b: Rect) -> bool {
+    return !(a.x + a.w <= b.x || b.x + b.w <= a.x
+          || a.y + a.h <= b.y || b.y + b.h <= a.y)
 }
 
 fn main() {
-    let ds = QuadTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Quad Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let q = Quadtree.new(Rect { x: 0, y: 0, w: 100, h: 100 }, 4)
+    for i in 0..20 {
+        let _ = q.insert(Point { x: (i * 7) % 100, y: (i * 13) % 100, data: i })
+    }
+    let hits = q.query_range(Rect { x: 0, y: 0, w: 50, h: 50 })
+    println("hits in top-left quadrant: " + len(hits) as str)
 }
