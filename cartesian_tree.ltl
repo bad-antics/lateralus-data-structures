@@ -1,41 +1,102 @@
-// Data Structure: Cartesian Tree
+// Cartesian Tree (Vuillemin, 1980).
+//
+// Given a sequence a[0..n-1], the unique Cartesian tree is a binary
+// tree where:
+//   • Each node corresponds to one array element.
+//   • In-order traversal recovers the original sequence.
+//   • Parent priorities are less than (min-Cartesian) child priorities
+//     — i.e. the root is the minimum of the array.
+//
+// Built in O(n) from the input with a single monotonic-stack pass.
+// Backbone of:
+//   • Range-Minimum-Query (RMQ) via LCA reduction.
+//   • Constant-time LCA (Bender-Farach-Colton, 2000).
+//   • Suffix-tree / suffix-array speedups.
+//   • Treap = random-priority Cartesian tree.
+
 module data_structures.cartesian_tree
 
-pub struct CartesianTreeNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub index: int, pub value: int,
+    pub parent: Node?, pub left: Node?, pub right: Node?,
 }
 
-pub struct CartesianTree {
-    root: any?
-    size: int
-}
+pub struct CartesianTree { pub root: Node? }
 
 impl CartesianTree {
-    pub fn new() -> CartesianTree {
-        return CartesianTree { root: nil, size: 0 }
+    /// O(n) construction via monotonic stack (min-Cartesian: root is min).
+    pub fn build(values: list) -> CartesianTree {
+        if len(values) == 0 { return CartesianTree { root: nil } }
+        let mut stack = []
+        let mut nodes = []
+        let mut i = 0
+        while i < len(values) {
+            let n = Node { index: i, value: values[i], parent: nil, left: nil, right: nil }
+            nodes = push(nodes, n)
+            let mut last: Node? = nil
+            while len(stack) > 0 && stack[len(stack) - 1].value > values[i] {
+                last = stack[len(stack) - 1]
+                stack = slice(stack, 0, len(stack) - 1)
+            }
+            if len(stack) > 0 {
+                let top = stack[len(stack) - 1]
+                top.right = n; n.parent = top
+            }
+            if last != nil { n.left = last; last.parent = n }
+            stack = push(stack, n)
+            i += 1
+        }
+        return CartesianTree { root: stack[0] }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    /// In-order traversal — must return the original array.
+    pub fn inorder(self) -> list {
+        let mut out = []
+        fn walk(n: Node?, out_ref: list) -> list {
+            if n == nil { return out_ref }
+            let mut o = walk(n.left, out_ref)
+            o = push(o, n.value)
+            return walk(n.right, o)
+        }
+        return walk(self.root, out)
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    /// Range Minimum Query — minimum of values[l..=r] is the value
+    /// at the LCA of leaves l and r in the Cartesian tree.
+    pub fn rmq(self, l: int, r: int) -> int {
+        let a = find_by_index(self.root, l)
+        let b = find_by_index(self.root, r)
+        return lca(a, b).value
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+}
+
+fn find_by_index(root: Node?, idx: int) -> Node? {
+    // Linear search — real RMQ uses Euler-tour + sparse table for O(1).
+    let mut stack = [root]; let mut result: Node? = nil
+    while len(stack) > 0 {
+        let n = stack[len(stack) - 1]
+        stack = slice(stack, 0, len(stack) - 1)
+        if n == nil { continue }
+        if n.index == idx { return n }
+        stack = push(stack, n.left); stack = push(stack, n.right)
     }
-    pub fn size_of(self) -> int { return self.size }
+    return nil
+}
+
+fn lca(a: Node, b: Node) -> Node {
+    // Walk both up marking ancestors.
+    let mut seen = []; let mut x = a
+    while x != nil { seen = push(seen, x.index); x = x.parent }
+    let mut y = b
+    while y != nil {
+        for s in seen { if s == y.index { return y } }
+        y = y.parent
+    }
+    return a   // unreachable if inputs share any ancestor
 }
 
 fn main() {
-    let ds = CartesianTree.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Cartesian Tree size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let ct = CartesianTree.build([9, 3, 7, 1, 8, 12, 10, 20, 15, 18, 5])
+    println("root.value = " + ct.root.value as str)   // 1 (global min)
+    println("RMQ [4..9] = " + ct.rmq(4, 9) as str)    // 8? actually min of [8,12,10,20,15,18]=8
 }
