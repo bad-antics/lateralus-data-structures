@@ -1,41 +1,104 @@
-// Data Structure: Sparse Matrix
+// Sparse matrix — coordinate (COO) and CSR representations.
+//
+// When most entries are zero, storing them is waste. Two dominant
+// formats:
+//
+//   COO (Coordinate): three parallel arrays (row[], col[], val[]).
+//     Simple, great for building matrices incrementally.
+//
+//   CSR (Compressed Sparse Row): row_ptr[] + col_idx[] + val[].
+//     row_ptr[i..i+1] slices into col_idx/val for row i's nonzeros.
+//     O(nnz) matrix-vector product, cache-friendly, used by SciPy,
+//     Intel MKL, cuSPARSE, Eigen sparse, OpenFOAM, PETSc.
+//
+// Convert COO → CSR by sorting triples lexicographically by (row, col)
+// and prefix-summing row counts.
+
 module data_structures.sparse_matrix
 
-pub struct SparseMatrixNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
-}
+pub struct COOEntry { pub row: int, pub col: int, pub val: int }
 
 pub struct SparseMatrix {
-    root: any?
-    size: int
+    pub rows: int, pub cols: int,
+    pub entries: list,           // COO
+    pub row_ptr: list,           // CSR (computed lazily)
+    pub col_idx: list,
+    pub values: list,
+    pub is_csr: bool,
 }
 
 impl SparseMatrix {
-    pub fn new() -> SparseMatrix {
-        return SparseMatrix { root: nil, size: 0 }
+    pub fn new(rows: int, cols: int) -> SparseMatrix {
+        return SparseMatrix { rows: rows, cols: cols, entries: [],
+                              row_ptr: [], col_idx: [], values: [], is_csr: false }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
-    }
-    pub fn search(self, key: int) -> any {
-        return nil
-    }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
-    }
-    pub fn size_of(self) -> int { return self.size }
-}
 
-fn main() {
-    let ds = SparseMatrix.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Sparse Matrix size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    pub fn set(self, r: int, c: int, v: int) {
+        if r < 0 || r >= self.rows || c < 0 || c >= self.cols {
+            throw Error("sparse_matrix: out of bounds")
+        }
+        if v == 0 { return }
+        self.entries = push(self.entries, COOEntry { row: r, col: c, val: v })
+        self.is_csr = false
+    }
+
+    pub fn get(self, r: int, c: int) -> int {
+        if self.is_csr {
+            let mut k = self.row_ptr[r]
+            while k < self.row_ptr[r + 1] {
+                if self.col_idx[k] == c { return self.values[k] }
+                k += 1
+            }
+            return 0
+        }
+        // Scan COO (last-write-wins).
+        let mut v = 0
+        for e in self.entries {
+            if e.row == r && e.col == c { v = e.val }
+        }
+        return v
+    }
+
+    /// Build CSR from COO. Call once before heavy matvec work.
+    pub fn compile_csr(self) {
+        // Count nonzeros per row.
+        let mut counts = []; let mut i = 0
+        while i <= self.rows { counts = push(counts, 0); i += 1 }
+        for e in self.entries { counts[e.row + 1] += 1 }
+        i = 1
+        while i <= self.rows { counts[i] += counts[i - 1]; i += 1 }
+        let nnz = counts[self.rows]
+        let mut col = []; let mut val = []
+        let mut k = 0
+        while k < nnz { col = push(col, 0); val = push(val, 0); k += 1 }
+        // Fill.
+        let mut offset = []; i = 0
+        while i < self.rows { offset = push(offset, counts[i]); i += 1 }
+        for e in self.entries {
+            let pos = offset[e.row]
+            col[pos] = e.col; val[pos] = e.val
+            offset[e.row] = pos + 1
+        }
+        self.row_ptr = counts; self.col_idx = col; self.values = val; self.is_csr = true
+    }
+
+    /// Sparse matrix × dense vector. Requires CSR.
+    pub fn matvec(self, x: list) -> list {
+        if !self.is_csr { self.compile_csr() }
+        if len(x) != self.cols { throw Error("matvec: dim mismatch") }
+        let mut out = []; let mut i = 0
+        while i < self.rows { out = push(out, 0); i += 1 }
+        i = 0
+        while i < self.rows {
+            let mut s = 0; let mut k = self.row_ptr[i]
+            while k < self.row_ptr[i + 1] {
+                s += self.values[k] * x[self.col_idx[k]]
+                k += 1
+            }
+            out[i] = s; i += 1
+        }
+        return out
+    }
+
+    pub fn nnz(self) -> int { return len(self.entries) }
 }
