@@ -1,41 +1,86 @@
-// Data Structure: Circular Buffer
+// Circular buffer / ring buffer — fixed-capacity FIFO in a wrap-around array.
+//
+// Indices head (read) and tail (write) advance modulo capacity. When
+// full, a push either (a) overwrites the oldest entry (drop-oldest
+// policy) or (b) blocks/fails (bounded-queue policy). Two classic
+// strategies to distinguish full from empty:
+//   1. Keep an explicit `count`.
+//   2. Use capacity+1 slots and detect full as (tail+1) % cap == head.
+//
+// Mainstay of:
+//   • UART/USB/SPI driver rings (Linux kernel tty, netdev Rx/Tx).
+//   • Lock-free SPSC queues (DPDK rte_ring, LMAX Disruptor).
+//   • Audio/video jitter buffers.
+//   • Log files with rotation (systemd journal journaling).
+//   • Network packet buffers (kernel socket sndbuf/rcvbuf).
+
 module data_structures.circular_buffer
 
-pub struct CircularBufferNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
-}
-
 pub struct CircularBuffer {
-    root: any?
-    size: int
+    pub data: list,
+    pub capacity: int,
+    pub head: int,     // read index
+    pub tail: int,     // write index
+    pub count: int,
+    pub overwrite: bool,
 }
 
 impl CircularBuffer {
-    pub fn new() -> CircularBuffer {
-        return CircularBuffer { root: nil, size: 0 }
+    pub fn new(capacity: int, overwrite: bool) -> CircularBuffer {
+        if capacity <= 0 { throw Error("circular_buffer: capacity must be > 0") }
+        let mut d = []; let mut i = 0
+        while i < capacity { d = push(d, nil); i += 1 }
+        return CircularBuffer { data: d, capacity: capacity, head: 0, tail: 0,
+                                count: 0, overwrite: overwrite }
     }
-    pub fn insert(self, key: int, value: any) {
-        self.size += 1
+
+    pub fn push(self, item: any) -> bool {
+        if self.count == self.capacity {
+            if !self.overwrite { return false }
+            // Drop oldest: advance head.
+            self.head = (self.head + 1) % self.capacity
+            self.count -= 1
+        }
+        self.data[self.tail] = item
+        self.tail = (self.tail + 1) % self.capacity
+        self.count += 1
+        return true
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    pub fn pop(self) -> any {
+        if self.count == 0 { throw Error("circular_buffer: empty") }
+        let item = self.data[self.head]
+        self.data[self.head] = nil
+        self.head = (self.head + 1) % self.capacity
+        self.count -= 1
+        return item
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    pub fn peek(self) -> any {
+        if self.count == 0 { throw Error("circular_buffer: empty") }
+        return self.data[self.head]
     }
-    pub fn size_of(self) -> int { return self.size }
+
+    pub fn is_full(self) -> bool  { return self.count == self.capacity }
+    pub fn is_empty(self) -> bool { return self.count == 0 }
+    pub fn size(self) -> int      { return self.count }
+    pub fn capacity_of(self) -> int { return self.capacity }
+
+    /// Iterate from oldest to newest without consuming.
+    pub fn to_list(self) -> list {
+        let mut out = []
+        let mut i = self.head; let mut n = 0
+        while n < self.count {
+            out = push(out, self.data[i])
+            i = (i + 1) % self.capacity
+            n += 1
+        }
+        return out
+    }
 }
 
 fn main() {
-    let ds = CircularBuffer.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("Circular Buffer size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let cb = CircularBuffer.new(4, true)
+    for v in [1, 2, 3, 4, 5] { let _ = cb.push(v) }   // 1 dropped
+    println(cb.to_list() as str)   // [2, 3, 4, 5]
 }
