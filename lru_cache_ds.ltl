@@ -1,41 +1,94 @@
-// Data Structure: LRU Cache
+// LRU Cache — O(1) get and put via hash map + doubly-linked list.
+//
+// Classic design:
+//   • HashMap<key, Node*> for O(1) lookup.
+//   • Doubly-linked list ordered by recency; head = most recent.
+//   • On access, unlink and push to head.
+//   • On overflow, evict the tail (least recently used).
+//
+// Behaviourally identical to Python's functools.lru_cache, Linux kernel's
+// LRU page-cache lists (though the kernel actually uses CLOCK-Pro /
+// 2Q / MGLRU variants for scan resistance), and Memcached's slab LRU.
+//
+// Variants: ARC (Adaptive Replacement Cache, IBM), 2Q (Johnson &
+// Shasha), TinyLFU (Caffeine), W-TinyLFU (Caffeine's default) — all
+// outperform LRU on scan-heavy workloads but are meaningfully more
+// complex.
+
 module data_structures.lru_cache_ds
 
-pub struct LRUCacheNode {
-    key: int
-    value: any
-    left: any?
-    right: any?
-    height: int
+pub struct Node {
+    pub key: any, pub value: any,
+    pub prev: Node?, pub next: Node?,
 }
 
 pub struct LRUCache {
-    root: any?
-    size: int
+    pub capacity: int,
+    pub size: int,
+    pub map: map,            // key -> Node
+    pub head: Node, pub tail: Node,   // sentinels
 }
 
 impl LRUCache {
-    pub fn new() -> LRUCache {
-        return LRUCache { root: nil, size: 0 }
+    pub fn new(capacity: int) -> LRUCache {
+        if capacity <= 0 { throw Error("LRU: capacity must be > 0") }
+        let head = Node { key: nil, value: nil, prev: nil, next: nil }
+        let tail = Node { key: nil, value: nil, prev: nil, next: nil }
+        head.next = tail; tail.prev = head
+        return LRUCache { capacity: capacity, size: 0, map: {}, head: head, tail: tail }
     }
-    pub fn insert(self, key: int, value: any) {
+
+    pub fn get(self, key: any) -> any {
+        if !self.map.has(key) { return nil }
+        let n = self.map[key]
+        self.move_to_head(n)
+        return n.value
+    }
+
+    pub fn put(self, key: any, value: any) {
+        if self.map.has(key) {
+            let n = self.map[key]
+            n.value = value
+            self.move_to_head(n)
+            return
+        }
+        if self.size == self.capacity {
+            let victim = self.tail.prev
+            self.unlink(victim)
+            self.map.remove(victim.key)
+            self.size -= 1
+        }
+        let n = Node { key: key, value: value, prev: nil, next: nil }
+        self.insert_at_head(n)
+        self.map[key] = n
         self.size += 1
     }
-    pub fn search(self, key: int) -> any {
-        return nil
+
+    fn unlink(self, n: Node) {
+        n.prev.next = n.next
+        n.next.prev = n.prev
     }
-    pub fn delete(self, key: int) -> bool {
-        if self.size > 0 { self.size -= 1; return true }
-        return false
+
+    fn insert_at_head(self, n: Node) {
+        n.prev = self.head
+        n.next = self.head.next
+        self.head.next.prev = n
+        self.head.next = n
     }
+
+    fn move_to_head(self, n: Node) {
+        self.unlink(n)
+        self.insert_at_head(n)
+    }
+
     pub fn size_of(self) -> int { return self.size }
 }
 
 fn main() {
-    let ds = LRUCache.new()
-    ds.insert(10, "ten")
-    ds.insert(5, "five")
-    ds.insert(15, "fifteen")
-    println("LRU Cache size: " + ds.size_of() as str)
-    println("Search 10: " + ds.search(10) as str)
+    let c = LRUCache.new(3)
+    c.put("a", 1); c.put("b", 2); c.put("c", 3)
+    c.get("a")             // "a" is now MRU
+    c.put("d", 4)          // evicts "b" (LRU)
+    println("b -> " + c.get("b") as str)   // nil
+    println("a -> " + c.get("a") as str)   // 1
 }
